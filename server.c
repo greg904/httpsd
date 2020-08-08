@@ -235,7 +235,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	if (listen(sock_fd, SOMAXCONN) == -1) {
+	if (listen(sock_fd, 4) == -1) {
 		perror("listen()");
 		return 1;
 	}
