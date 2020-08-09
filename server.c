@@ -18,6 +18,10 @@
 #include <time.h>
 #include <unistd.h>
 
+#ifndef SERVER_PORT
+#define SERVER_PORT 8080
+#endif
+
 #define MAX_CLIENTS 16
 
 enum request_state {
@@ -520,7 +524,7 @@ int main(int argc, char **argv)
 	struct sockaddr_in addr = {};
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(8080);
+	addr.sin_port = htons(SERVER_PORT);
 
 	if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		perror("bind()");
