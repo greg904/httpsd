@@ -55,9 +55,9 @@ void send_response(int client_fd, const char *request_uri_buf, uint32_t request_
 		// This is to be expected if the request has timed out.
 		if (errno != EINTR)
 			perror("write()");
-
-		return;
 	}
+
+	free(response_buf);
 }
 
 void handle_client(int client_fd)
