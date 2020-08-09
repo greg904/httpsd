@@ -42,7 +42,7 @@ void send_response(int client_fd, const char *request_uri_buf,
 		   uint32_t request_host_len)
 {
 	const char response_start[] =
-	    "HTTP/1.1 301 Moved Permanently\nLocation: https://";
+	    "HTTP/1.1 301 Moved Permanently\r\nLocation: https://";
 	const char response_end[] = "\r\n\r\n";
 
 	size_t response_len = (sizeof(response_start) - 1) + request_host_len +
