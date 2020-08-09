@@ -87,7 +87,7 @@ void handle_client(int client_fd)
 			return;
 		}
 		if (n == 0) {
-			fputs("EOS without parsing finished\n", stderr);
+			// EOS before parsing finished
 			close(client_fd);
 			return;
 		}
@@ -102,8 +102,7 @@ void handle_client(int client_fd)
 				for (;;) {
 					if (receive_buf[read_index++] !=
 					    method_str[parser_tmp++]) {
-						fputs("invalid HTTP method\n",
-						      stderr);
+						// Invalid HTTP method
 						close(client_fd);
 						return;
 					}
@@ -133,8 +132,7 @@ void handle_client(int client_fd)
 
 					if (request_uri_len >=
 					    sizeof(request_uri_buf)) {
-						fputs("request URI too long\n",
-						      stderr);
+						// The request URI is too long
 						close(client_fd);
 						return;
 					}
@@ -163,9 +161,7 @@ void handle_client(int client_fd)
 				break;
 			case request_lf:
 				if (receive_buf[read_index++] != '\n') {
-					fputs("expected LF but got something "
-					      "else\n",
-					      stderr);
+					// Expected a LF, but got something else
 					close(client_fd);
 					return;
 				}
@@ -215,8 +211,7 @@ void handle_client(int client_fd)
 
 					if (request_host_len >=
 					    sizeof(request_host_buf)) {
-						fputs("request host too long\n",
-						      stderr);
+						// The request host is too long
 						close(client_fd);
 						return;
 					}
@@ -269,19 +264,11 @@ int main(int argc, char **argv)
 	}
 
 	for (;;) {
-		struct sockaddr_in client_addr = {};
-		socklen_t client_addr_len = sizeof(client_addr);
-
-		int accept_fd = accept(sock_fd, (struct sockaddr *)&client_addr,
-				       &client_addr_len);
+		int accept_fd = accept(sock_fd, NULL, NULL);
 		if (accept_fd == -1) {
 			perror("accept()");
 			return 1;
 		}
-
-		const char *parts = (const char *)&client_addr.sin_addr.s_addr;
-		printf("connection from %d.%d.%d.%d\n", parts[0], parts[1],
-		       parts[2], parts[3]);
 
 		alarm(1); // Start request timeout
 		handle_client(accept_fd);
