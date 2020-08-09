@@ -54,9 +54,8 @@ void send_response(int client_fd, const char *request_uri_buf, uint32_t request_
 	if (write(client_fd, response_buf, response_len) == -1) {
 		// This is to be expected if the request has timed out.
 		if (errno != EINTR)
-			perror("read()");
+			perror("write()");
 
-		perror("write()");
 		return;
 	}
 }
