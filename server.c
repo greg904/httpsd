@@ -8,8 +8,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-enum request_state
-{
+enum request_state {
 	// Expects the GET method
 	request_method,
 
@@ -31,18 +30,23 @@ enum request_state
 	request_header_host,
 };
 
-void memcpy_increment_dest(char *restrict *dest, const char *restrict src, size_t n)
+void memcpy_increment_dest(char *restrict *dest, const char *restrict src,
+			   size_t n)
 {
 	memcpy(*dest, src, n);
 	*dest += n;
 }
 
-void send_response(int client_fd, const char *request_uri_buf, uint32_t request_uri_len, const char *request_host_buf, uint32_t request_host_len)
+void send_response(int client_fd, const char *request_uri_buf,
+		   uint32_t request_uri_len, const char *request_host_buf,
+		   uint32_t request_host_len)
 {
-	const char response_start[] = "HTTP/1.1 301 Moved Permanently\nLocation: https://";
+	const char response_start[] =
+	    "HTTP/1.1 301 Moved Permanently\nLocation: https://";
 	const char response_end[] = "\r\n\r\n";
 
-	size_t response_len = (sizeof(response_start) - 1) + request_host_len + request_uri_len + (sizeof(response_end) - 1);
+	size_t response_len = (sizeof(response_start) - 1) + request_host_len +
+			      request_uri_len + (sizeof(response_end) - 1);
 	char *response_buf = malloc(response_len);
 
 	char *tmp = response_buf;
@@ -78,7 +82,7 @@ void handle_client(int client_fd)
 			// This is to be expected if the request has timed out.
 			if (errno != EINTR)
 				perror("read()");
-			
+
 			close(client_fd);
 			return;
 		}
@@ -96,13 +100,16 @@ void handle_client(int client_fd)
 				const char method_str[] = "GET ";
 
 				for (;;) {
-					if (receive_buf[read_index++] != method_str[parser_tmp++]) {
-						fputs("invalid HTTP method\n", stderr);
+					if (receive_buf[read_index++] !=
+					    method_str[parser_tmp++]) {
+						fputs("invalid HTTP method\n",
+						      stderr);
 						close(client_fd);
 						return;
 					}
-					
-					if (parser_tmp == sizeof(method_str) - 1) {
+
+					if (parser_tmp ==
+					    sizeof(method_str) - 1) {
 						parser_state = request_uri;
 						parser_tmp = 0;
 						break;
@@ -118,13 +125,16 @@ void handle_client(int client_fd)
 				for (;;) {
 					char c = receive_buf[read_index++];
 					if (c == ' ') {
-						parser_state = request_ignore_line;
+						parser_state =
+						    request_ignore_line;
 						parser_tmp = 0;
 						break;
 					}
 
-					if (request_uri_len >= sizeof(request_uri_buf)) {
-						fputs("request URI too long\n", stderr);
+					if (request_uri_len >=
+					    sizeof(request_uri_buf)) {
+						fputs("request URI too long\n",
+						      stderr);
 						close(client_fd);
 						return;
 					}
@@ -153,11 +163,13 @@ void handle_client(int client_fd)
 				break;
 			case request_lf:
 				if (receive_buf[read_index++] != '\n') {
-					fputs("expected LF but got something else\n", stderr);
+					fputs("expected LF but got something "
+					      "else\n",
+					      stderr);
 					close(client_fd);
 					return;
 				}
-				
+
 				parser_state = request_header_name;
 				parser_tmp = 0;
 
@@ -166,14 +178,18 @@ void handle_client(int client_fd)
 				const char host_str[] = "Host: ";
 
 				for (;;) {
-					if (receive_buf[read_index++] != host_str[parser_tmp++]) {
-						parser_state = request_ignore_line;
+					if (receive_buf[read_index++] !=
+					    host_str[parser_tmp++]) {
+						parser_state =
+						    request_ignore_line;
 						parser_tmp = 0;
 						break;
 					}
-					
-					if (parser_tmp == sizeof(host_str) - 1) {
-						parser_state = request_header_host;
+
+					if (parser_tmp ==
+					    sizeof(host_str) - 1) {
+						parser_state =
+						    request_header_host;
 						parser_tmp = 0;
 						break;
 					}
@@ -188,13 +204,19 @@ void handle_client(int client_fd)
 				for (;;) {
 					char c = receive_buf[read_index++];
 					if (c == '\r') {
-						send_response(client_fd, request_uri_buf, request_uri_len, request_host_buf, request_host_len);
+						send_response(client_fd,
+							      request_uri_buf,
+							      request_uri_len,
+							      request_host_buf,
+							      request_host_len);
 						close(client_fd);
 						return;
 					}
 
-					if (request_host_len >= sizeof(request_host_buf)) {
-						fputs("request host too long\n", stderr);
+					if (request_host_len >=
+					    sizeof(request_host_buf)) {
+						fputs("request host too long\n",
+						      stderr);
 						close(client_fd);
 						return;
 					}
@@ -212,9 +234,7 @@ void handle_client(int client_fd)
 	}
 }
 
-void empty_signal_handler(int signal)
-{
-}
+void empty_signal_handler(int signal) {}
 
 int main(int argc, char **argv)
 {
@@ -229,7 +249,7 @@ int main(int argc, char **argv)
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(8080);
 
-	if (bind(sock_fd, (struct sockaddr *) &addr, sizeof(addr)) == -1) {
+	if (bind(sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		perror("bind()");
 		return 1;
 	}
@@ -252,15 +272,17 @@ int main(int argc, char **argv)
 		struct sockaddr_in client_addr = {};
 		socklen_t client_addr_len = sizeof(client_addr);
 
-		int accept_fd = accept(sock_fd, (struct sockaddr *) &client_addr, &client_addr_len);
+		int accept_fd = accept(sock_fd, (struct sockaddr *)&client_addr,
+				       &client_addr_len);
 		if (accept_fd == -1) {
 			perror("accept()");
 			return 1;
 		}
 
-		const char *parts = (const char *) &client_addr.sin_addr.s_addr;
-		printf("connection from %d.%d.%d.%d\n", parts[0], parts[1], parts[2], parts[3]);
-		
+		const char *parts = (const char *)&client_addr.sin_addr.s_addr;
+		printf("connection from %d.%d.%d.%d\n", parts[0], parts[1],
+		       parts[2], parts[3]);
+
 		alarm(1); // Start request timeout
 		handle_client(accept_fd);
 		alarm(0); // Stop request timeout
