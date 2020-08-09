@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -14,6 +15,7 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #define MAX_CLIENTS 16
@@ -42,6 +44,14 @@ enum request_state {
 
 struct client {
 	int socket_fd;
+
+	// If we haven't received a valid request after the timeout, we will
+	// close the socket and free the client object.
+	// This is to prevent potential badly behaving clients that would open
+	// a connection to the server, not send anything (or not finish the
+	// request) and never close the connection from taking up space and
+	// preventing other good clients from connecting.
+	struct timespec timeout;
 
 	enum request_state parser_state;
 
@@ -76,6 +86,12 @@ int client_allocate()
 		}
 	}
 	return -1;
+}
+
+bool client_is_valid(int index)
+{
+	uint16_t mask = 1 << index;
+	return (clients_bitmap & mask) != 0;
 }
 
 void client_free(int index) { clients_bitmap &= ~(1 << index); }
@@ -301,17 +317,25 @@ bool epoll_on_server_in()
 
 		// Reset the fields
 		struct client *c = &clients[client_index];
-		c->bytes_sent = 0;
-		c->parser_tmp = 0;
-		memset(c->request_host_buf, 0, sizeof(c->request_host_buf));
-		c->request_host_len = 0;
-		memset(c->request_uri_buf, 0, sizeof(c->request_uri_buf));
-		c->request_uri_len = 0;
-		memset(c->response_buf, 0, sizeof(c->response_buf));
-		c->response_len = 0;
-		c->parser_tmp = 0;
 		c->socket_fd = client_fd;
 		c->parser_state = request_method;
+		c->parser_tmp = 0;
+		memset(c->request_uri_buf, 0, sizeof(c->request_uri_buf));
+		c->request_uri_len = 0;
+		memset(c->request_host_buf, 0, sizeof(c->request_host_buf));
+		c->request_host_len = 0;
+		memset(c->response_buf, 0, sizeof(c->response_buf));
+		c->response_len = 0;
+		c->bytes_sent = 0;
+
+		// Setup the timeout
+		struct timespec now;
+		if (clock_gettime(CLOCK_MONOTONIC, &now) == -1) {
+			perror("clock_gettime()");
+			return false;
+		}
+		c->timeout = now;
+		c->timeout.tv_sec += 2;
 
 		struct epoll_event client_epoll_event;
 		client_epoll_event.data.u64 = client_index + 1;
@@ -523,8 +547,65 @@ int main(int argc, char **argv)
 	for (;;) {
 		struct epoll_event events[32];
 
-		int ret = epoll_wait(epoll_fd, events,
-				     sizeof(events) / sizeof(*events), -1);
+		struct timespec now;
+		if (clock_gettime(CLOCK_MONOTONIC, &now) == -1) {
+			perror("clock_gettime()");
+			return 1;
+		}
+
+		int first_client_to_timeout = -1;
+		int epoll_timeout = -1;
+
+		for (int i = 0; i < MAX_CLIENTS; i++) {
+			if (!client_is_valid(i))
+				continue;
+
+			struct client *c = &clients[i];
+			struct timespec *client_timeout = &c->timeout;
+			if (now.tv_sec > client_timeout->tv_sec ||
+			    (now.tv_sec == client_timeout->tv_sec &&
+			     now.tv_nsec >= client_timeout->tv_nsec)) {
+				// The request has already timed out
+				close(c->socket_fd);
+				client_free(i);
+				continue;
+			}
+
+			time_t diff_sec = client_timeout->tv_sec - now.tv_sec;
+			if (diff_sec > INT_MAX / 1000)
+				continue;
+
+			// Millisecond difference without whole seconds
+			int tmp =
+			    (client_timeout->tv_nsec - now.tv_nsec) / 1000000;
+
+			int diff_msec = diff_sec * 1000;
+			if (diff_msec > INT_MAX - tmp ||
+			    diff_msec < INT_MIN + tmp)
+				continue;
+			diff_msec += tmp;
+
+			if (diff_msec == 0)
+				continue;
+
+			if (epoll_timeout == -1 || diff_msec < epoll_timeout) {
+				first_client_to_timeout = i;
+				epoll_timeout = diff_msec;
+			}
+		}
+
+		int ret =
+		    epoll_wait(epoll_fd, events,
+			       sizeof(events) / sizeof(*events), epoll_timeout);
+		if (ret == 0) {
+			// The client had a chance to send us something before
+			// the timeout but it didn't do so, so we will close the
+			// socket and free the client object.
+			assert(first_client_to_timeout != -1);
+			close(clients[first_client_to_timeout].socket_fd);
+			client_free(first_client_to_timeout);
+			continue;
+		}
 		if (ret == -1) {
 			perror("epoll_wait()");
 			return 1;

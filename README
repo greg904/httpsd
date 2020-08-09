@@ -1,5 +1,5 @@
 A simple HTTP 1 server that redirects requests with the GET method to the same
 URL but with the HTTPS scheme instead, and drops all other requests.
 
-It doesn't automatically time out requests. This means that it is suceptible to
-attacks such as the Slowloris attack.
+It can only handle 16 connections at a time, and it doesn't rate limit clients
+which means that it is easily susceptible to DoS attacks.
