@@ -1,5 +1,5 @@
 A simple HTTP 1 server that redirects requests with the GET method to the same
 URL but with the HTTPS scheme instead, and drops all other requests.
 
-It is single threaded and can only handle one client at a time. This means that
-it is suceptible to attacks such as the Slowloris attack.
+It doesn't automatically time out requests. This means that it is suceptible to
+attacks such as the Slowloris attack.
