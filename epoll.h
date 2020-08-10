@@ -9,8 +9,8 @@ bool epoll_setup();
 bool epoll_run();
 
 bool epoll_on_server_in();
-bool epoll_on_client_in(int client_index);
-bool epoll_on_client_out(int client_index);
+bool epoll_on_conn_in(int client_index);
+bool epoll_on_conn_out(int client_index);
 bool epoll_on_event();
 
 #endif

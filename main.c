@@ -16,7 +16,6 @@
 #include <unistd.h>
 
 #include "config.h"
-#include "client.h"
 #include "epoll.h"
 #include "misc.h"
 #include "parser.h"
