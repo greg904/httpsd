@@ -5,7 +5,7 @@
 
 #include "client.h"
 #include "parser.h"
-#include "util.h"
+#include "misc.h"
 
 // If this becomes greater than 16, then the uint16_t type that is used
 // throughout the code needs to be changed.
