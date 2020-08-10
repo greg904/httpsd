@@ -16,13 +16,11 @@
 #include <unistd.h>
 
 #include "epoll.h"
-#include "misc.h"
+#include "util.h"
 
 #ifndef SERVER_PORT
 #	define SERVER_PORT 8080
 #endif
-
-char tmp_buf[512];
 
 int main(int argc, char **argv)
 {

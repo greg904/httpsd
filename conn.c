@@ -7,7 +7,7 @@
 
 #include "conn.h"
 #include "parser.h"
-#include "misc.h"
+#include "util.h"
 
 /* If this becomes greater than 16, then the uint16_t type that is used
    throughout the code needs to be changed. */
@@ -79,7 +79,7 @@ void conn_free(int index)
 	/* Reset the fields for later, if the index gets reused. */
 	struct conn *c = &connections[index];
 	c->res_bytes_sent = 0;
-	c->req_parser_state = ps_method_0;
+	c->req_parser_state = 0;
 	memset(c->req_fields, 0, sizeof(c->req_fields));
 }
 
@@ -110,15 +110,21 @@ enum conn_wants_more conn_recv(int id, const char *data, size_t len)
 {
 	struct conn *c = &connections[id];
 
-	uint8_t parser_state = c->req_parser_state;
-	enum parser_result result = parser_go(&parser_state, c->req_fields, sizeof(c->req_fields), data, len);
+	struct parse_args args;
+	args.state = c->req_parser_state;
+	args.data = data;
+	args.data_end = data + len;
+	args.req_fields = c->req_fields;
+	args.req_fields_len = sizeof(c->req_fields);
+
+	enum parse_completion result = parser_go(&args);
 	switch (result) {
-	case pr_continue:
-		c->req_parser_state = parser_state;
+	case PC_NEEDS_MORE_DATA:
+		c->req_parser_state = args.state;
 		return CWM_YES;
-	case pr_error:
+	case PC_ERROR:
 		return CWM_ERROR;
-	case pr_finished:
+	case PC_COMPLETE:
 		return CWM_NO;
 	}
 }
@@ -130,7 +136,7 @@ enum conn_wants_more conn_send(int id)
 	/* We can afford to rebuild the whole response on every EPOLLIN
 	   notification because there should only be 1 for a given socket most
 	   of the time so in reality, we're only going to do this once. */
-	size_t total_response_len = conn_write_redirect_response(id, tmp_buf, sizeof(tmp_buf));
+	size_t total_response_len = conn_write_redirect_response(id, reuse_tmp_buf, sizeof(reuse_tmp_buf));
 
 	for (;;) {
 		size_t remaining = total_response_len - c->res_bytes_sent;
@@ -138,7 +144,7 @@ enum conn_wants_more conn_send(int id)
 			return CWM_NO;
 
 		ssize_t written =
-		    write(c->socket_fd, tmp_buf + c->res_bytes_sent, remaining);
+		    write(c->socket_fd, reuse_tmp_buf + c->res_bytes_sent, remaining);
 		if (written == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				return CWM_YES;

@@ -13,7 +13,7 @@
 
 #include "conn.h"
 #include "epoll.h"
-#include "misc.h"
+#include "util.h"
 
 static int epoll_fd;
 static int epoll_server_socket_fd;
@@ -185,7 +185,7 @@ static bool epoll_on_conn_in(int conn_id)
 	int socket_fd = conn_get_socket_fd(conn_id);
 
 	for (;;) {
-		int bytes_read = read(socket_fd, tmp_buf, sizeof(tmp_buf));
+		int bytes_read = read(socket_fd, reuse_tmp_buf, sizeof(reuse_tmp_buf));
 		if (bytes_read == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				/* We have already read everything. */
@@ -204,7 +204,7 @@ static bool epoll_on_conn_in(int conn_id)
 			return true;
 		}
 
-		enum conn_wants_more wants_more = conn_recv(conn_id, tmp_buf, bytes_read);
+		enum conn_wants_more wants_more = conn_recv(conn_id, reuse_tmp_buf, bytes_read);
 		switch (wants_more) {
 		case CWM_YES:
 			continue;
