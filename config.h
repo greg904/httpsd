@@ -1,0 +1,8 @@
+#ifndef G9_HTTPS_REDIRECT_CONFIG_H
+#define G9_HTTPS_REDIRECT_CONFIG_H
+
+#ifndef SERVER_PORT
+#define SERVER_PORT 8080
+#endif
+
+#endif

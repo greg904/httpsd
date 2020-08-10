@@ -18,67 +18,13 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "config.h"
+#include "client.h"
 #include "parser.h"
-
-#ifndef SERVER_PORT
-#define SERVER_PORT 8080
-#endif
-
-#define MAX_CLIENTS 16
-
-// Represents a socket connection to the server socket. Note that the size of
-// this struct is precisely 256 bytes.
-struct client {
-	// If we haven't received a valid request after the timeout, we will
-	// close the socket and free the client object.
-	// This is to prevent potential badly behaving clients that would open
-	// a connection to the server, not send anything (or not finish the
-	// request) and never close the connection from taking up space and
-	// preventing other good clients from connecting.
-	uint64_t timeout;
-
-	int socket_fd;
-
-	// The write syscall might not write the whole buffer but only a part of
-	// it, therefore we must keep track of how many bytes we have already
-	// sent in order to know what to send the next time we get a EPOLLIN
-	// event.
-	uint16_t res_bytes_sent : 12;
-
-	uint8_t req_parser_state : 4;
-
-	// At the end of the parsing, this will contain the request URI, then
-	// a NULL character, then the request host, then a NULL character or
-	// no character if it's the end of the array.
-	char req_fields[242];
-};
-
-enum _client_respond {
-	// There is more data to send, the method must be called again.
-	_cr_continue,
-
-	_cr_error,
-
-	// We finished sending the response to the client. The socket can be
-	// closed.
-	_cr_finished,
-};
-
-static struct client clients[MAX_CLIENTS];
-
-// For every clients object that is currently used, a bit is set in this bitmap.
-static uint16_t clients_bitmap;
+#include "util.h"
 
 static int epoll_fd;
 static int server_fd;
-
-static char tmp_buf[512];
-
-static int client_allocate();
-static bool client_is_valid(int index);
-static void client_free(int index);
-static size_t client_write_response(struct client *c, char *response);
-static enum _client_respond client_continue_sending_response(struct client *c);
 
 static bool epoll_on_server_in();
 static bool epoll_on_client_in(int client_index);
@@ -140,11 +86,11 @@ int main(int argc, char **argv)
 		uint16_t clients_to_timeout = 0;
 		int epoll_timeout = -1;
 
-		for (int i = 0; i < MAX_CLIENTS; i++) {
-			if (!client_is_valid(i))
+		for (int i = 0; i < client_get_max_index(); i++) {
+			struct client *c = client_get(i);
+			if (c == NULL)
 				continue;
-
-			struct client *c = &clients[i];
+			
 			if (now_msec >= c->timeout) {
 				// The request has already timed out
 				close(c->socket_fd);
@@ -169,9 +115,12 @@ int main(int argc, char **argv)
 			// the timeout but it didn't do so, so we will close the
 			// socket and free the client object.
 			assert(clients_to_timeout != 0);
-			for (int i = 0; i < MAX_CLIENTS; i++) {
+			for (int i = 0; i < client_get_max_index(); i++) {
 				if ((clients_to_timeout & (1 << i)) != 0) {
-					close(clients[i].socket_fd);
+					struct client *c = client_get(i);
+					assert(c != NULL);
+
+					close(c->socket_fd);
 					client_free(i);
 				}
 			}
@@ -186,94 +135,6 @@ int main(int argc, char **argv)
 			if (!epoll_on_event(&events[i]))
 				return 1;
 		}
-	}
-}
-
-static int client_allocate()
-{
-	for (int i = 0; i < MAX_CLIENTS; i++) {
-		uint16_t mask = 1 << i;
-		// Check if that index is already used
-		if ((clients_bitmap & mask) == 0) {
-			clients_bitmap |= mask;
-			return i;
-		}
-	}
-	return -1;
-}
-
-static bool client_is_valid(int index)
-{
-	uint16_t mask = 1 << index;
-	return (clients_bitmap & mask) != 0;
-}
-
-static void client_free(int index)
-{
-	clients_bitmap &= ~(1 << index);
-
-	// Reset the fields for later
-	struct client *c = &clients[index];
-	c->res_bytes_sent = 0;
-	c->req_parser_state = ps_method_0;
-	memset(c->req_fields, 0, sizeof(c->req_fields));
-}
-
-static size_t client_write_response(struct client *c, char *response)
-{
-	char *tmp = response;
-
-	const char response_start[] =
-	    "HTTP/1.1 301 Moved Permanently\r\nLocation: https://";
-	memcpy(response, response_start, sizeof(response_start) - 1);
-	tmp += sizeof(response_start) - 1;
-
-	size_t sep_index = strlen(c->req_fields);
-
-	char *host_start = c->req_fields + sep_index + 1;
-	char *host_end = host_start;
-	while (*host_end != '\0' && host_end != c->req_fields + sizeof(c->req_fields))
-		host_end++;
-	size_t host_len = host_end - host_start;
-
-	// Host
-	memcpy(tmp, c->req_fields + sep_index + 1, host_len);
-	tmp += host_len;
-
-	// Slash
-	*tmp = '/';
-	tmp++;
-
-	// URI
-	memcpy(tmp, c->req_fields, sep_index);
-	tmp += sep_index;
-
-	const char response_end[] = "\r\n\r\n";
-	memcpy(tmp, response_end, sizeof(response_end) - 1);
-	tmp += sizeof(response_end) - 1;
-
-	return tmp - response;
-}
-
-static enum _client_respond client_continue_sending_response(struct client *c)
-{
-	size_t res_len = client_write_response(c, tmp_buf);
-
-	for (;;) {
-		size_t remaining = res_len - c->res_bytes_sent;
-		if (remaining == 0)
-			return _cr_finished;
-
-		ssize_t written =
-		    write(c->socket_fd, tmp_buf + c->res_bytes_sent, remaining);
-		if (written == -1) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				return _cr_continue;
-
-			perror("write()");
-			return _cr_error;
-		}
-		c->res_bytes_sent += written;
 	}
 }
 
@@ -301,7 +162,8 @@ static bool epoll_on_server_in()
 			close(client_fd);
 			continue;
 		}
-		struct client *c = &clients[client_index];
+		struct client *c = client_get(client_index);
+		assert(c != NULL);
 
 		c->socket_fd = client_fd;
 
@@ -332,7 +194,8 @@ static bool epoll_on_server_in()
 
 static bool epoll_on_client_in(int client_index)
 {
-	struct client *c = &clients[client_index];
+	struct client *c = client_get(client_index);
+	assert(c != NULL);
 
 	bool continue_read = true;
 	while (continue_read) {
@@ -371,10 +234,10 @@ static bool epoll_on_client_in(int client_index)
 			client_free(client_index);
 			break;
 		case pr_finished: {
-			enum _client_respond result =
+			enum client_respond result =
 			    client_continue_sending_response(c);
 			switch (result) {
-			case _cr_continue: {
+			case cr_continue: {
 				struct epoll_event new_client_epoll;
 				new_client_epoll.data.u64 = client_index + 1;
 				// We need to wait until we can write to the
@@ -391,9 +254,9 @@ static bool epoll_on_client_in(int client_index)
 				continue_read = false;
 				break;
 			}
-			case _cr_error:
+			case cr_error:
 				return false;
-			case _cr_finished:
+			case cr_finished:
 				continue_read = false;
 				// The socket FD will be removed from the epoll
 				// when it is closed.
@@ -412,15 +275,16 @@ static bool epoll_on_client_in(int client_index)
 
 static bool epoll_on_client_out(int client_index)
 {
-	struct client *c = &clients[client_index];
+	struct client *c = client_get(client_index);
+	assert(c != NULL);
 
-	enum _client_respond result = client_continue_sending_response(c);
+	enum client_respond result = client_continue_sending_response(c);
 	switch (result) {
-	case _cr_continue:
+	case cr_continue:
 		break;
-	case _cr_error:
+	case cr_error:
 		return false;
-	case _cr_finished:
+	case cr_finished:
 		// The socket FD will be removed from the epoll when it is
 		// closed.
 		close(c->socket_fd);
@@ -448,15 +312,17 @@ bool epoll_on_event(const struct epoll_event *event)
 		int client_index = event->data.u64 - 1;
 
 		if (rdhup || err) {
-			// We haven't had the chance yet to
-			// finish sending the response because
-			// we are still receiving events for the
-			// FD. However, the writing half is now
-			// closed or an error has occured on the
-			// socket, so we must end the
-			// connection.
-			close(clients[client_index].socket_fd);
+			// We haven't finished handling this request but there
+			// was an error or the writing half has been closed so
+			// now we will drop it because we can't do anything with
+			// it.
+
+			struct client *c = client_get(client_index);
+			assert(c != NULL);
+
+			close(c->socket_fd);
 			client_free(client_index);
+
 			return true;
 		}
 
