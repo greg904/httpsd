@@ -15,12 +15,13 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "config.h"
 #include "epoll.h"
 #include "misc.h"
-#include "parser.h"
 
-int server_fd;
+#ifndef SERVER_PORT
+#	define SERVER_PORT 8080
+#endif
+
 char tmp_buf[512];
 
 int main(int argc, char **argv)
@@ -28,13 +29,7 @@ int main(int argc, char **argv)
 	UNUSED(argc);
 	UNUSED(argv);
 
-	epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-	if (epoll_fd == -1) {
-		perror("epoll_create()");
-		return EXIT_FAILURE;
-	}
-
-	server_fd =
+	int server_fd =
 	    socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if (server_fd == -1) {
 		perror("socket()");
@@ -51,23 +46,17 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	struct epoll_event server_epoll_event;
-	server_epoll_event.data.u64 = 0;
-	// We want to be notified when the server socket is ready to accept a
-	// client socket.
-	server_epoll_event.events = EPOLLIN | EPOLLET | EPOLLWAKEUP;
-
-	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd,
-		      &server_epoll_event) == -1) {
-		perror("epoll_ctl()");
+	if (!epoll_init(server_fd))
 		return EXIT_FAILURE;
-	}
 
 	if (listen(server_fd, 4) == -1) {
 		perror("listen()");
 		return EXIT_FAILURE;
 	}
 
-	return epoll_run() ? EXIT_SUCCESS : EXIT_FAILURE;
+	for (;;) {
+		if (!epoll_wait_and_dispatch())
+			return EXIT_FAILURE;
+	}
 }
 

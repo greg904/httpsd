@@ -14,28 +14,48 @@
 #include "conn.h"
 #include "epoll.h"
 #include "misc.h"
-#include "parser.h"
 
-int epoll_fd;
+static int epoll_fd;
+static int epoll_server_socket_fd;
 
 static uint64_t epoll_now;
 static int epoll_max_sleep;
 
+struct epoll_event epoll_event_buffer[32];
+
+static bool epoll_on_event(const struct epoll_event *event);
+static bool epoll_on_server_in();
+static bool epoll_on_conn_in(int conn_id);
+static bool epoll_on_conn_out(int conn_id);
+
 static void epoll_timeout_helper(int conn_id);
 
-bool epoll_setup() {
+bool epoll_init(int server_socket_fd) {
+	epoll_server_socket_fd = server_socket_fd;
+
         epoll_fd = epoll_create1(EPOLL_CLOEXEC);
 	if (epoll_fd == -1) {
 		perror("epoll_create()");
 		return false;
 	}
+	
+	struct epoll_event server_epoll_event;
+	server_epoll_event.data.u64 = 0;
+	/* We want to be notified when the server socket is ready to accept a
+	   client socket. */
+	server_epoll_event.events = EPOLLIN | EPOLLET | EPOLLWAKEUP;
+
+	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, epoll_server_socket_fd,
+		      &server_epoll_event) == -1) {
+		perror("epoll_ctl()");
+		return false;
+	}
+
         return true;
 }
 
-bool epoll_run() {
+bool epoll_wait_and_dispatch() {
         for (;;) {
-		struct epoll_event events[32];
-
 		struct timespec now_ts;
 		if (clock_gettime(CLOCK_MONOTONIC, &now_ts) == -1) {
 			perror("clock_gettime()");
@@ -46,8 +66,8 @@ bool epoll_run() {
 		conn_for_each(epoll_timeout_helper);
 
 		int ret =
-		    epoll_wait(epoll_fd, events,
-			       sizeof(events) / sizeof(*events), epoll_max_sleep);
+		    epoll_wait(epoll_fd, epoll_event_buffer,
+			       sizeof(epoll_event_buffer) / sizeof(*epoll_event_buffer), epoll_max_sleep);
 		if (ret == 0) {
 			/* One of the connections has exceeded its timeout, so
 			   we will close it automatically in the next
@@ -60,18 +80,62 @@ bool epoll_run() {
 		}
 
 		for (int i = 0; i < ret; i++) {
-			if (!epoll_on_event(&events[i]))
+			if (!epoll_on_event(&epoll_event_buffer[i]))
 				return false;
 		}
 	}
 }
 
-bool epoll_on_server_in()
+static bool epoll_on_event(const struct epoll_event *event)
+{
+	bool in = (event->events & EPOLLIN) != 0;
+	bool out = (event->events & EPOLLOUT) != 0;
+	bool rdhup = (event->events & EPOLLRDHUP) != 0;
+	bool err = (event->events & EPOLLERR) != 0;
+
+	if (event->data.u64 == 0) {
+		assert(!rdhup && !err);
+		assert(in && !out);
+
+		if (!epoll_on_server_in())
+			return 1;
+	} else {
+		int conn_id = event->data.u64 - 1;
+
+		if (rdhup || err) {
+			/* We haven't finished handling this request but there
+			   was an error or the writing half has been closed so
+			   now we will drop it because we can't do anything with
+			   it. */
+
+			close(conn_get_socket_fd(conn_id));
+			conn_free(conn_id);
+
+			return true;
+		}
+
+		/* This should never fail because we first
+		   register for EPOLLIN and then we register for
+		   just EPOLLOUT as soon as we want to send the
+		   response, so we should never have both of
+		   them at the same time. */
+		assert(in != out);
+
+		if (in && !epoll_on_conn_in(conn_id))
+			return false;
+		if (out && !epoll_on_conn_out(conn_id))
+			return false;
+	}
+
+	return true;
+}
+
+static bool epoll_on_server_in()
 {
 	/* The server socket is ready to accept one or many connection(s). */
 
 	for (;;) {
-		int client_fd = accept4(server_fd, NULL, NULL,
+		int client_fd = accept4(epoll_server_socket_fd, NULL, NULL,
 					SOCK_CLOEXEC | SOCK_NONBLOCK);
 		if (client_fd == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -116,7 +180,7 @@ bool epoll_on_server_in()
 	return true;
 }
 
-bool epoll_on_conn_in(int conn_id)
+static bool epoll_on_conn_in(int conn_id)
 {
 	int socket_fd = conn_get_socket_fd(conn_id);
 
@@ -184,7 +248,7 @@ bool epoll_on_conn_in(int conn_id)
 	return true;
 }
 
-bool epoll_on_conn_out(int conn_id)
+static bool epoll_on_conn_out(int conn_id)
 {
 	switch (conn_send(conn_id)) {
 	case CWM_YES:
@@ -197,50 +261,6 @@ bool epoll_on_conn_out(int conn_id)
 	case CWM_ERROR:
 		return false;
 	}
-}
-
-bool epoll_on_event(const struct epoll_event *event)
-{
-	bool in = (event->events & EPOLLIN) != 0;
-	bool out = (event->events & EPOLLOUT) != 0;
-	bool rdhup = (event->events & EPOLLRDHUP) != 0;
-	bool err = (event->events & EPOLLERR) != 0;
-
-	if (event->data.u64 == 0) {
-		assert(!rdhup && !err);
-		assert(in && !out);
-
-		if (!epoll_on_server_in())
-			return 1;
-	} else {
-		int conn_id = event->data.u64 - 1;
-
-		if (rdhup || err) {
-			/* We haven't finished handling this request but there
-			   was an error or the writing half has been closed so
-			   now we will drop it because we can't do anything with
-			   it. */
-
-			close(conn_get_socket_fd(conn_id));
-			conn_free(conn_id);
-
-			return true;
-		}
-
-		/* This should never fail because we first
-		   register for EPOLLIN and then we register for
-		   just EPOLLOUT as soon as we want to send the
-		   response, so we should never have both of
-		   them at the same time. */
-		assert(in != out);
-
-		if (in && !epoll_on_conn_in(conn_id))
-			return false;
-		if (out && !epoll_on_conn_out(conn_id))
-			return false;
-	}
-
-	return true;
 }
 
 static void epoll_timeout_helper(int conn_id) {

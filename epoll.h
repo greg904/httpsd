@@ -3,14 +3,15 @@
 
 #include <stdbool.h>
 
-extern int epoll_fd;
+/**
+ * Initializes the epoll module. Takes the HTTP server socket's FD as an
+ * argument.
+ */
+bool epoll_init(int server_socket_fd);
 
-bool epoll_setup();
-bool epoll_run();
-
-bool epoll_on_server_in();
-bool epoll_on_conn_in(int client_index);
-bool epoll_on_conn_out(int client_index);
-bool epoll_on_event();
+/**
+ * Blocks until something is worth doing and does it.
+ */
+bool epoll_wait_and_dispatch();
 
 #endif
