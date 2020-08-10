@@ -26,6 +26,9 @@ char tmp_buf[512];
 
 int main(int argc, char **argv)
 {
+	UNUSED(argc);
+	UNUSED(argv);
+
 	epoll_fd = epoll_create1(EPOLL_CLOEXEC);
 	if (epoll_fd == -1) {
 		perror("epoll_create()");
@@ -39,7 +42,7 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	struct sockaddr_in addr = {};
+	struct sockaddr_in addr = { 0 };
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(SERVER_PORT);

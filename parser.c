@@ -1,5 +1,6 @@
 #include <string.h>
 
+#include "misc.h"
 #include "parser.h"
 
 enum _parser_internal_result {
@@ -101,6 +102,9 @@ static enum _parser_internal_result _parser_do_method(uint8_t *req_parser_state,
 						      const char **data,
 						      const char *data_end)
 {
+	UNUSED(req_fields);
+	UNUSED(req_fields_len);
+
 	const char method_str[] = "GET /";
 
 	for (;;) {
@@ -166,6 +170,9 @@ _parser_do_ignore_line(uint8_t *req_parser_state, char *req_fields,
 		       size_t req_fields_len, const char **data,
 		       const char *data_end)
 {
+	UNUSED(req_fields);
+	UNUSED(req_fields_len);
+
 	for (;;) {
 		if (**data == '\r') {
 			*req_parser_state = ps_lf;
@@ -187,6 +194,9 @@ static enum _parser_internal_result
 _parser_do_lf(uint8_t *req_parser_state, char *req_fields,
 	      size_t req_fields_len, const char **data, const char *data_end)
 {
+	UNUSED(req_fields);
+	UNUSED(req_fields_len);
+
 	// Expect the LF character.
 	if (**data != '\n')
 		return _pir_error;
@@ -205,6 +215,9 @@ _parser_do_header_name(uint8_t *req_parser_state, char *req_fields,
 		       size_t req_fields_len, const char **data,
 		       const char *data_end)
 {
+	UNUSED(req_fields);
+	UNUSED(req_fields_len);
+
 	const char host_str[] = "Host: ";
 
 	for (;;) {

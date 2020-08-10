@@ -1,6 +1,8 @@
 #ifndef G9_HTTPS_REDIRECT_MISC_H
 #define G9_HTTPS_REDIRECT_MISC_H
 
+#define UNUSED(x) (void)x;
+
 extern int server_fd;
 
 // A temporary buffer used to read requests or write responses.

@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <sys/epoll.h>
@@ -54,10 +55,13 @@ bool epoll_run() {
 			}
 
 			uint64_t diff_msec = c->timeout - now_msec;
-			if (epoll_timeout == -1 || diff_msec < epoll_timeout) {
+			if (diff_msec > INT_MAX)
+				continue;
+
+			if (epoll_timeout == -1 || (int) diff_msec < epoll_timeout) {
 				clients_to_timeout = 1 << i;
-				epoll_timeout = diff_msec;
-			} else if (diff_msec == epoll_timeout) {
+				epoll_timeout = (int) diff_msec;
+			} else if ((int) diff_msec == epoll_timeout) {
 				clients_to_timeout |= 1 << i;
 			}
 		}
