@@ -18,33 +18,13 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "parser.h"
+
 #ifndef SERVER_PORT
 #define SERVER_PORT 8080
 #endif
 
 #define MAX_CLIENTS 16
-
-enum request_state {
-	// Expects the GET method
-	request_method,
-
-	// Reads the request URI
-	request_uri,
-
-	// Ignores everything until it encounters a CR in which case it switches
-	// to request_lf
-	request_ignore_line,
-
-	// Expected a LF and switches to request_header_name
-	request_lf,
-
-	// Reads the header's name. Switches either to request_header_host if
-	// the header's name is "Host" or to request_ignore_line if it is not.
-	request_header_name,
-
-	// Reads the Host header's value and responds to the client
-	request_header_host,
-};
 
 struct client {
 	int socket_fd;
@@ -57,17 +37,7 @@ struct client {
 	// preventing other good clients from connecting.
 	struct timespec timeout;
 
-	enum request_state parser_state;
-
-	// This is for remembering where we are in the HTTP method or in a HTTP
-	// header name if it gets split between two calls to read().
-	uint8_t parser_tmp;
-
-	char request_uri_buf[256];
-	uint32_t request_uri_len;
-
-	char request_host_buf[256];
-	uint32_t request_host_len;
+	struct parser parser;
 
 	char response_buf[1024];
 	uint32_t response_len;
@@ -100,139 +70,6 @@ bool client_is_valid(int index)
 
 void client_free(int index) { clients_bitmap &= ~(1 << index); }
 
-enum parser_result {
-	// The parser needs more data to make a decision.
-	parser_result_continue,
-
-	parser_result_failed,
-
-	// The parsing has finished. A response can be made.
-	parser_result_can_respond,
-};
-
-enum parser_result client_continue_parsing(struct client *c, const char *data,
-					   size_t len)
-{
-	size_t read_index = 0;
-
-	do {
-		switch (c->parser_state) {
-		case request_method: {
-			const char method_str[] = "GET ";
-
-			for (;;) {
-				if (data[read_index++] !=
-				    method_str[c->parser_tmp++]) {
-					// Invalid HTTP method
-					return parser_result_failed;
-				}
-
-				if (c->parser_tmp == sizeof(method_str) - 1) {
-					c->parser_state = request_uri;
-					c->parser_tmp = 0;
-					break;
-				}
-
-				if (read_index >= len)
-					break;
-			}
-
-			break;
-		}
-		case request_uri:
-			for (;;) {
-				char ch = data[read_index++];
-				if (ch == ' ') {
-					c->parser_state = request_ignore_line;
-					break;
-				}
-
-				if (c->request_uri_len >=
-				    sizeof(c->request_uri_buf)) {
-					// The request URI is too long
-					return parser_result_failed;
-				}
-
-				c->request_uri_buf[c->request_uri_len] = ch;
-				c->request_uri_len++;
-
-				if (read_index >= len)
-					break;
-			}
-
-			break;
-		case request_ignore_line:
-			for (;;) {
-				char ch = data[read_index++];
-				if (ch == '\r') {
-					c->parser_state = request_lf;
-					break;
-				}
-
-				if (read_index >= len)
-					break;
-			}
-
-			break;
-		case request_lf:
-			if (data[read_index++] != '\n') {
-				// Expected a LF, but got something else
-				return parser_result_failed;
-			}
-
-			c->parser_state = request_header_name;
-
-			break;
-		case request_header_name: {
-			const char host_str[] = "Host: ";
-
-			for (;;) {
-				if (data[read_index++] !=
-				    host_str[c->parser_tmp++]) {
-					c->parser_state = request_ignore_line;
-					c->parser_tmp = 0;
-					break;
-				}
-
-				if (c->parser_tmp == sizeof(host_str) - 1) {
-					c->parser_state = request_header_host;
-					c->parser_tmp = 0;
-					break;
-				}
-
-				if (read_index >= len)
-					break;
-			}
-
-			break;
-		}
-		case request_header_host:
-			for (;;) {
-				char ch = data[read_index++];
-				if (ch == '\r')
-					return parser_result_can_respond;
-
-				if (c->request_host_len >=
-				    sizeof(c->request_host_buf)) {
-					// The request host is too long
-					return false;
-				}
-
-				c->request_host_buf[c->request_host_len] = ch;
-				c->request_host_len++;
-
-				if (read_index >= len)
-					break;
-			}
-
-			break;
-		}
-	} while (read_index < len);
-
-	// Everything parsed successfully.
-	return parser_result_continue;
-}
-
 void memcpy_increment_dest(char *restrict *dest, const char *restrict src,
 			   size_t n)
 {
@@ -247,14 +84,14 @@ void client_prepare_response(struct client *c)
 	const char response_end[] = "\r\n\r\n";
 
 	size_t response_len = (sizeof(response_start) - 1) +
-			      c->request_host_len + c->request_uri_len +
+			      c->parser.host_len + c->parser.uri_len +
 			      (sizeof(response_end) - 1);
 	assert(response_len < sizeof(c->response_buf));
 
 	char *tmp = c->response_buf;
 	memcpy_increment_dest(&tmp, response_start, sizeof(response_start) - 1);
-	memcpy_increment_dest(&tmp, c->request_host_buf, c->request_host_len);
-	memcpy_increment_dest(&tmp, c->request_uri_buf, c->request_uri_len);
+	memcpy_increment_dest(&tmp, c->parser.host, c->parser.host_len);
+	memcpy_increment_dest(&tmp, c->parser.uri, c->parser.uri_len);
 	memcpy_increment_dest(&tmp, response_end, sizeof(response_end) - 1);
 
 	c->response_len = response_len;
@@ -322,12 +159,7 @@ bool epoll_on_server_in()
 		// Reset the fields
 		struct client *c = &clients[client_index];
 		c->socket_fd = client_fd;
-		c->parser_state = request_method;
-		c->parser_tmp = 0;
-		memset(c->request_uri_buf, 0, sizeof(c->request_uri_buf));
-		c->request_uri_len = 0;
-		memset(c->request_host_buf, 0, sizeof(c->request_host_buf));
-		c->request_host_len = 0;
+		parser_reset(&c->parser);
 		memset(c->response_buf, 0, sizeof(c->response_buf));
 		c->response_len = 0;
 		c->bytes_sent = 0;
@@ -387,18 +219,18 @@ bool epoll_on_client_in(int client_index)
 		}
 
 		enum parser_result r =
-		    client_continue_parsing(c, receive_buffer, bytes_read);
+		    parser_feed(&c->parser, receive_buffer, bytes_read);
 		switch (r) {
-		case parser_result_continue:
+		case pr_continue:
 			continue;
-		case parser_result_failed:
+		case pr_error:
 			continue_read = false;
 			// The socket FD will be removed from the epoll when it
 			// is closed.
 			close(c->socket_fd);
 			client_free(client_index);
 			break;
-		case parser_result_can_respond:
+		case pr_finished:
 			client_prepare_response(c);
 
 			enum client_respond result =
@@ -414,8 +246,7 @@ bool epoll_on_client_in(int client_index)
 				if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD,
 					      c->socket_fd,
 					      &new_client_epoll) == -1) {
-					perror("epoll_"
-					       "ctl()");
+					perror("epoll_ctl()");
 					return false;
 				}
 
