@@ -26,30 +26,164 @@
 
 #define MAX_CLIENTS 16
 
+// Represents a socket connection to the server socket. Note that the size of
+// this struct is precisely 256 bytes.
 struct client {
-	int socket_fd;
-
 	// If we haven't received a valid request after the timeout, we will
 	// close the socket and free the client object.
 	// This is to prevent potential badly behaving clients that would open
 	// a connection to the server, not send anything (or not finish the
 	// request) and never close the connection from taking up space and
 	// preventing other good clients from connecting.
-	struct timespec timeout;
+	uint64_t timeout;
 
-	struct parser parser;
+	int socket_fd;
 
-	char response_buf[1024];
-	uint32_t response_len;
-	uint32_t bytes_sent;
+	// The write syscall might not write the whole buffer but only a part of
+	// it, therefore we must keep track of how many bytes we have already
+	// sent in order to know what to send the next time we get a EPOLLIN
+	// event.
+	uint16_t res_bytes_sent : 12;
+
+	uint8_t req_parser_state : 4;
+
+	// At the end of the parsing, this will contain the request URI, then
+	// a NULL character, then the request host, then a NULL character or
+	// no character if it's the end of the array.
+	char req_fields[242];
 };
 
-struct client clients[MAX_CLIENTS];
+enum _client_respond {
+	// There is more data to send, the method must be called again.
+	_cr_continue,
+
+	_cr_error,
+
+	// We finished sending the response to the client. The socket can be
+	// closed.
+	_cr_finished,
+};
+
+static struct client clients[MAX_CLIENTS];
 
 // For every clients object that is currently used, a bit is set in this bitmap.
-uint16_t clients_bitmap;
+static uint16_t clients_bitmap;
 
-int client_allocate()
+static int epoll_fd;
+static int server_fd;
+
+static char tmp_buf[512];
+
+static int client_allocate();
+static bool client_is_valid(int index);
+static void client_free(int index);
+static size_t client_write_response(struct client *c, char *response);
+static enum _client_respond client_continue_sending_response(struct client *c);
+
+static bool epoll_on_server_in();
+static bool epoll_on_client_in(int client_index);
+static bool epoll_on_client_out(int client_index);
+static bool epoll_on_event();
+
+int main(int argc, char **argv)
+{
+	epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+	if (epoll_fd == -1) {
+		perror("epoll_create()");
+		return EXIT_FAILURE;
+	}
+
+	server_fd =
+	    socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+	if (server_fd == -1) {
+		perror("socket()");
+		return 1;
+	}
+
+	struct sockaddr_in addr = {};
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(SERVER_PORT);
+
+	if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		perror("bind()");
+		return 1;
+	}
+
+	struct epoll_event server_epoll_event;
+	server_epoll_event.data.u64 = 0;
+	// We want to be notified when the server socket is ready to accept a
+	// client socket.
+	server_epoll_event.events = EPOLLIN | EPOLLET | EPOLLWAKEUP;
+
+	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd,
+		      &server_epoll_event) == -1) {
+		perror("epoll_ctl()");
+		return 1;
+	}
+
+	if (listen(server_fd, 4) == -1) {
+		perror("listen()");
+		return 1;
+	}
+
+	for (;;) {
+		struct epoll_event events[32];
+
+		struct timespec now;
+		if (clock_gettime(CLOCK_MONOTONIC, &now) == -1) {
+			perror("clock_gettime()");
+			return 1;
+		}
+		uint64_t now_msec = now.tv_sec * 1000 + now.tv_nsec / 1000000;
+
+		int first_client_to_timeout = -1;
+		int epoll_timeout = -1;
+
+		for (int i = 0; i < MAX_CLIENTS; i++) {
+			if (!client_is_valid(i))
+				continue;
+
+			struct client *c = &clients[i];
+			if (now_msec >= c->timeout) {
+				// The request has already timed out
+				close(c->socket_fd);
+				client_free(i);
+				continue;
+			}
+
+			uint64_t diff_msec = c->timeout - now_msec;
+			if (epoll_timeout == -1 || diff_msec < epoll_timeout) {
+				first_client_to_timeout = i;
+				epoll_timeout = diff_msec;
+			}
+		}
+
+		int ret =
+		    epoll_wait(epoll_fd, events,
+			       sizeof(events) / sizeof(*events), epoll_timeout);
+		if (ret == 0) {
+			// The client had a chance to send us something before
+			// the timeout but it didn't do so, so we will close the
+			// socket and free the client object.
+			assert(first_client_to_timeout != -1);
+			close(clients[first_client_to_timeout].socket_fd);
+			client_free(first_client_to_timeout);
+			continue;
+		}
+		if (ret == -1) {
+			perror("epoll_wait()");
+			return 1;
+		}
+
+		for (int i = 0; i < ret; i++) {
+			if (!epoll_on_event(&events[i]))
+				return 1;
+		}
+	}
+}
+
+static int client_allocate()
 {
 	for (int i = 0; i < MAX_CLIENTS; i++) {
 		uint16_t mask = 1 << i;
@@ -62,76 +196,82 @@ int client_allocate()
 	return -1;
 }
 
-bool client_is_valid(int index)
+static bool client_is_valid(int index)
 {
 	uint16_t mask = 1 << index;
 	return (clients_bitmap & mask) != 0;
 }
 
-void client_free(int index) { clients_bitmap &= ~(1 << index); }
-
-void memcpy_increment_dest(char *restrict *dest, const char *restrict src,
-			   size_t n)
+static void client_free(int index)
 {
-	memcpy(*dest, src, n);
-	*dest += n;
+	clients_bitmap &= ~(1 << index);
+
+	// Reset the fields for later
+	struct client *c = &clients[index];
+	c->res_bytes_sent = 0;
+	c->req_parser_state = ps_method_0;
+	memset(c->req_fields, 0, sizeof(c->req_fields));
 }
 
-void client_prepare_response(struct client *c)
+static size_t client_write_response(struct client *c, char *response)
 {
+	char *tmp = response;
+
 	const char response_start[] =
 	    "HTTP/1.1 301 Moved Permanently\r\nLocation: https://";
+	memcpy(response, response_start, sizeof(response_start) - 1);
+	tmp += sizeof(response_start) - 1;
+
+	size_t sep_index = strlen(c->req_fields);
+
+	char *host_start = c->req_fields + sep_index + 1;
+	char *host_end = host_start;
+	while (*host_end != '\0' && host_end != c->req_fields + sizeof(c->req_fields))
+		host_end++;
+	size_t host_len = host_end - host_start;
+
+	// Host
+	memcpy(tmp, c->req_fields + sep_index + 1, host_len);
+	tmp += host_len;
+
+	// Slash
+	*tmp = '/';
+	tmp++;
+
+	// URI
+	memcpy(tmp, c->req_fields, sep_index);
+	tmp += sep_index;
+
 	const char response_end[] = "\r\n\r\n";
+	memcpy(tmp, response_end, sizeof(response_end) - 1);
+	tmp += sizeof(response_end) - 1;
 
-	size_t response_len = (sizeof(response_start) - 1) +
-			      c->parser.host_len + c->parser.uri_len +
-			      (sizeof(response_end) - 1);
-	assert(response_len < sizeof(c->response_buf));
-
-	char *tmp = c->response_buf;
-	memcpy_increment_dest(&tmp, response_start, sizeof(response_start) - 1);
-	memcpy_increment_dest(&tmp, c->parser.host, c->parser.host_len);
-	memcpy_increment_dest(&tmp, c->parser.uri, c->parser.uri_len);
-	memcpy_increment_dest(&tmp, response_end, sizeof(response_end) - 1);
-
-	c->response_len = response_len;
+	return tmp - response;
 }
 
-enum client_respond {
-	// There is more data to send, the method must be called again.
-	client_respond_continue,
-
-	client_respond_failed,
-
-	// We finished sending the response to the client. The socket can be
-	// closed.
-	client_respond_finished,
-};
-
-enum client_respond client_continue_sending_response(struct client *c)
+static enum _client_respond client_continue_sending_response(struct client *c)
 {
-	for (;;) {
-		size_t remaining = c->response_len - c->bytes_sent;
-		if (remaining == 0)
-			return client_respond_finished;
+	size_t res_len = client_write_response(c, tmp_buf);
 
-		ssize_t written = write(
-		    c->socket_fd, c->response_buf + c->bytes_sent, remaining);
+	for (;;) {
+		size_t remaining = res_len - c->res_bytes_sent;
+		if (remaining == 0)
+			return _cr_finished;
+
+		ssize_t written =
+		    write(c->socket_fd, tmp_buf + c->res_bytes_sent, remaining);
 		if (written == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				return client_respond_continue;
+				return _cr_continue;
 
 			perror("write()");
-			return client_respond_failed;
+			return _cr_error;
 		}
-		c->bytes_sent += written;
+		c->res_bytes_sent += written;
 	}
 }
 
-int epoll_fd;
-int server_fd;
-
-bool epoll_on_server_in()
+static bool epoll_on_server_in()
 {
 	// The server socket is ready to accept one or
 	// many connection(s).
@@ -155,14 +295,9 @@ bool epoll_on_server_in()
 			close(client_fd);
 			continue;
 		}
-
-		// Reset the fields
 		struct client *c = &clients[client_index];
+
 		c->socket_fd = client_fd;
-		parser_reset(&c->parser);
-		memset(c->response_buf, 0, sizeof(c->response_buf));
-		c->response_len = 0;
-		c->bytes_sent = 0;
 
 		// Setup the timeout
 		struct timespec now;
@@ -170,8 +305,7 @@ bool epoll_on_server_in()
 			perror("clock_gettime()");
 			return false;
 		}
-		c->timeout = now;
-		c->timeout.tv_sec += 2;
+		c->timeout = now.tv_sec * 1000 + now.tv_nsec / 1000000 + 2000;
 
 		struct epoll_event client_epoll_event;
 		client_epoll_event.data.u64 = client_index + 1;
@@ -190,16 +324,13 @@ bool epoll_on_server_in()
 	return true;
 }
 
-bool epoll_on_client_in(int client_index)
+static bool epoll_on_client_in(int client_index)
 {
 	struct client *c = &clients[client_index];
 
 	bool continue_read = true;
 	while (continue_read) {
-		char receive_buffer[1024];
-
-		int bytes_read =
-		    read(c->socket_fd, receive_buffer, sizeof(receive_buffer));
+		int bytes_read = read(c->socket_fd, tmp_buf, sizeof(tmp_buf));
 		if (bytes_read == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				// We have already read everything.
@@ -218,10 +349,13 @@ bool epoll_on_client_in(int client_index)
 			return true;
 		}
 
+		uint8_t state = c->req_parser_state;
 		enum parser_result r =
-		    parser_feed(&c->parser, receive_buffer, bytes_read);
+		    parser_go(&state, c->req_fields, sizeof(c->req_fields),
+			      tmp_buf, bytes_read);
 		switch (r) {
 		case pr_continue:
+			c->req_parser_state = state;
 			continue;
 		case pr_error:
 			continue_read = false;
@@ -230,13 +364,11 @@ bool epoll_on_client_in(int client_index)
 			close(c->socket_fd);
 			client_free(client_index);
 			break;
-		case pr_finished:
-			client_prepare_response(c);
-
-			enum client_respond result =
+		case pr_finished: {
+			enum _client_respond result =
 			    client_continue_sending_response(c);
 			switch (result) {
-			case client_respond_continue: {
+			case _cr_continue: {
 				struct epoll_event new_client_epoll;
 				new_client_epoll.data.u64 = client_index + 1;
 				// We need to wait until we can write to the
@@ -253,9 +385,9 @@ bool epoll_on_client_in(int client_index)
 				continue_read = false;
 				break;
 			}
-			case client_respond_failed:
+			case _cr_error:
 				return false;
-			case client_respond_finished:
+			case _cr_finished:
 				continue_read = false;
 				// The socket FD will be removed from the epoll
 				// when it is closed.
@@ -266,22 +398,23 @@ bool epoll_on_client_in(int client_index)
 
 			break;
 		}
+		}
 	}
 
 	return true;
 }
 
-bool epoll_on_client_out(int client_index)
+static bool epoll_on_client_out(int client_index)
 {
 	struct client *c = &clients[client_index];
 
-	enum client_respond result = client_continue_sending_response(c);
+	enum _client_respond result = client_continue_sending_response(c);
 	switch (result) {
-	case client_respond_continue:
+	case _cr_continue:
 		break;
-	case client_respond_failed:
+	case _cr_error:
 		return false;
-	case client_respond_finished:
+	case _cr_finished:
 		// The socket FD will be removed from the epoll when it is
 		// closed.
 		close(c->socket_fd);
@@ -335,120 +468,4 @@ bool epoll_on_event(const struct epoll_event *event)
 	}
 
 	return true;
-}
-
-int main(int argc, char **argv)
-{
-	epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-	if (epoll_fd == -1) {
-		perror("epoll_create()");
-		return EXIT_FAILURE;
-	}
-
-	server_fd =
-	    socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-	if (server_fd == -1) {
-		perror("socket()");
-		return 1;
-	}
-
-	struct sockaddr_in addr = {};
-	addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(SERVER_PORT);
-
-	if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		perror("bind()");
-		return 1;
-	}
-
-	struct epoll_event server_epoll_event;
-	server_epoll_event.data.u64 = 0;
-	// We want to be notified when the server socket is ready to accept a
-	// client socket.
-	server_epoll_event.events = EPOLLIN | EPOLLET | EPOLLWAKEUP;
-
-	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd,
-		      &server_epoll_event) == -1) {
-		perror("epoll_ctl()");
-		return 1;
-	}
-
-	if (listen(server_fd, 4) == -1) {
-		perror("listen()");
-		return 1;
-	}
-
-	for (;;) {
-		struct epoll_event events[32];
-
-		struct timespec now;
-		if (clock_gettime(CLOCK_MONOTONIC, &now) == -1) {
-			perror("clock_gettime()");
-			return 1;
-		}
-
-		int first_client_to_timeout = -1;
-		int epoll_timeout = -1;
-
-		for (int i = 0; i < MAX_CLIENTS; i++) {
-			if (!client_is_valid(i))
-				continue;
-
-			struct client *c = &clients[i];
-			struct timespec *client_timeout = &c->timeout;
-			if (now.tv_sec > client_timeout->tv_sec ||
-			    (now.tv_sec == client_timeout->tv_sec &&
-			     now.tv_nsec >= client_timeout->tv_nsec)) {
-				// The request has already timed out
-				close(c->socket_fd);
-				client_free(i);
-				continue;
-			}
-
-			time_t diff_sec = client_timeout->tv_sec - now.tv_sec;
-			if (diff_sec > INT_MAX / 1000)
-				continue;
-
-			// Millisecond difference without whole seconds
-			int tmp =
-			    (client_timeout->tv_nsec - now.tv_nsec) / 1000000;
-
-			int diff_msec = diff_sec * 1000;
-			if (diff_msec > INT_MAX - tmp ||
-			    diff_msec < INT_MIN + tmp)
-				continue;
-			diff_msec += tmp;
-
-			if (diff_msec == 0)
-				continue;
-
-			if (epoll_timeout == -1 || diff_msec < epoll_timeout) {
-				first_client_to_timeout = i;
-				epoll_timeout = diff_msec;
-			}
-		}
-
-		int ret =
-		    epoll_wait(epoll_fd, events,
-			       sizeof(events) / sizeof(*events), epoll_timeout);
-		if (ret == 0) {
-			// The client had a chance to send us something before
-			// the timeout but it didn't do so, so we will close the
-			// socket and free the client object.
-			assert(first_client_to_timeout != -1);
-			close(clients[first_client_to_timeout].socket_fd);
-			client_free(first_client_to_timeout);
-			continue;
-		}
-		if (ret == -1) {
-			perror("epoll_wait()");
-			return 1;
-		}
-
-		for (int i = 0; i < ret; i++) {
-			if (!epoll_on_event(&events[i]))
-				return 1;
-		}
-	}
 }

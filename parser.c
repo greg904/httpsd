@@ -1,152 +1,300 @@
+#include <string.h>
+
 #include "parser.h"
 
-void parser_reset(struct parser *p) {
-        p->state = ps_method;
-        p->tmp = 0;
-        p->uri_len = 0;
-        p->host_len = 0;
-}
+enum _parser_internal_result {
+	_pir_continue,
+	_pir_eof,
+	_pir_error,
+	_pir_finished,
+};
 
-static enum parser_result parser_do_method(struct parser *p, const char **data, const char *data_end);
-static enum parser_result parser_do_uri(struct parser *p, const char **data, const char *data_end);
-static enum parser_result parser_do_ignore_line(struct parser *p, const char **data, const char *data_end);
-static enum parser_result parser_do_lf(struct parser *p, const char **data, const char *data_end);
-static enum parser_result parser_do_header_name(struct parser *p, const char **data, const char *data_end);
-static enum parser_result parser_do_host(struct parser *p, const char **data, const char *data_end);
+static enum _parser_internal_result _parser_do_method(uint8_t *req_parser_state,
+						      char *req_fields,
+						      size_t req_fields_len,
+						      const char **data,
+						      const char *data_end);
+static enum _parser_internal_result
+_parser_do_uri(uint8_t *req_parser_state, char *req_fields,
+	       size_t req_fields_len, const char **data, const char *data_end);
+static enum _parser_internal_result
+_parser_do_ignore_line(uint8_t *req_parser_state, char *req_fields,
+		       size_t req_fields_len, const char **data,
+		       const char *data_end);
+static enum _parser_internal_result
+_parser_do_lf(uint8_t *req_parser_state, char *req_fields,
+	      size_t req_fields_len, const char **data, const char *data_end);
+static enum _parser_internal_result
+_parser_do_header_name(uint8_t *req_parser_state, char *req_fields,
+		       size_t req_fields_len, const char **data,
+		       const char *data_end);
+static enum _parser_internal_result
+_parser_do_host(uint8_t *req_parser_state, char *req_fields,
+		size_t req_fields_len, const char **data, const char *data_end);
 
-enum parser_result parser_feed(struct parser *p, const char *data, size_t len) {
-        size_t read_index = 0;
+static void _reverse(char *data, char *data_end);
 
-        const char *data_end = data + len;
+enum parser_result parser_go(uint8_t *req_parser_state, char *req_fields,
+			     size_t req_fields_len, const char *data,
+			     size_t len)
+{
+	const char *data_end = data + len;
 
-	do {
-                enum parser_result result;
+	for (;;) {
+		enum _parser_internal_result r;
 
-		switch (p->state) {
-		case ps_method:
-                        result = parser_do_method(p, &data, data_end);
-                        break;
+		switch (*req_parser_state) {
+		case ps_method_0:
+		case ps_method_0 + 1:
+		case ps_method_0 + 2:
+		case ps_method_0 + 3:
+		case ps_method_0 + 4:
+			r = _parser_do_method(req_parser_state, req_fields,
+					      req_fields_len, &data, data_end);
+			break;
 		case ps_uri:
-                        result = parser_do_uri(p, &data, data_end);
+			r = _parser_do_uri(req_parser_state, req_fields,
+					   req_fields_len, &data, data_end);
 			break;
 		case ps_ignore_line:
-			result = parser_do_ignore_line(p, &data, data_end);
+			r = _parser_do_ignore_line(req_parser_state, req_fields,
+						   req_fields_len, &data,
+						   data_end);
 			break;
 		case ps_lf:
-			result = parser_do_lf(p, &data, data_end);
+			r = _parser_do_lf(req_parser_state, req_fields,
+					  req_fields_len, &data, data_end);
 			break;
-		case ps_header_name:
-                        result = parser_do_header_name(p, &data, data_end);
-                        break;
+		case ps_header_name_0:
+		case ps_header_name_0 + 1:
+		case ps_header_name_0 + 2:
+		case ps_header_name_0 + 3:
+		case ps_header_name_0 + 4:
+		case ps_header_name_0 + 5:
+			r = _parser_do_header_name(req_parser_state, req_fields,
+						   req_fields_len, &data,
+						   data_end);
+			break;
 		case ps_host:
-                        result = parser_do_host(p, &data, data_end);
+			r = _parser_do_host(req_parser_state, req_fields,
+					    req_fields_len, &data, data_end);
 			break;
 		}
 
-                if (result != pr_continue)
-                        return result;
-	} while (read_index < len);
-
-	// Everything parsed successfully.
-	return pr_continue;
+		switch (r) {
+		case _pir_continue:
+			continue;
+		case _pir_eof:
+			// Everything parsed successfully.
+			return pr_continue;
+		case _pir_error:
+			return pr_error;
+		case _pir_finished:
+			return pr_finished;
+		}
+	}
 }
 
-static enum parser_result parser_do_method(struct parser *p, const char **data, const char *data_end) {
-        const char method_str[] = "GET ";
+static enum _parser_internal_result _parser_do_method(uint8_t *req_parser_state,
+						      char *req_fields,
+						      size_t req_fields_len,
+						      const char **data,
+						      const char *data_end)
+{
+	const char method_str[] = "GET /";
 
-        do {
-                if (*(*data)++ != method_str[p->tmp++]) {
-                        // Invalid HTTP method
-                        return pr_error;
-                }
+	for (;;) {
+		// Invalid HTTP method
+		if (**data != method_str[*req_parser_state - ps_method_0])
+			return _pir_error;
 
-                if (p->tmp == sizeof(method_str) - 1) {
-                        p->state = ps_uri;
-                        p->tmp = 0;
-                        break;
-                }
-        } while (*data != data_end);
+		(*data)++;
+		(*req_parser_state)++;
 
-        return pr_continue;
+		if (*data == data_end)
+			return _pir_eof;
+
+		if (*req_parser_state == ps_uri)
+			return _pir_continue;
+	}
 }
 
-static enum parser_result parser_do_uri(struct parser *p, const char **data, const char *data_end) {
-        do {
-                char ch = *(*data)++;
-                if (ch == ' ') {
-                        p->state = ps_ignore_line;
-                        break;
-                }
+static enum _parser_internal_result
+_parser_do_uri(uint8_t *req_parser_state, char *req_fields,
+	       size_t req_fields_len, const char **data, const char *data_end)
+{
+	size_t fill_index = 0;
+	while (req_fields[fill_index] != '\0')
+		fill_index++;
 
-                if (p->uri_len >= sizeof(p->uri)) {
-                        // The request URI is too long
-                        return pr_error;
-                }
+	for (;;) {
+		char ch = **data;
+		switch (ch) {
+		case '\0':
+			// We can't accept this character because we use it
+			// internally to delimit the end of the URI and the
+			// start of the request Host header's value.
+			return _pir_error;
+		case ' ':
+			req_fields[fill_index] = '\0';
+			*req_parser_state = ps_ignore_line;
 
-                p->uri[p->uri_len] = ch;
-                p->uri_len++;
-        } while (*data != data_end);
+			(*data)++;
+			if (*data == data_end)
+				return _pir_eof;
 
-        return pr_continue;
+			return _pir_continue;
+		default:
+			// We need at least one NULL character after the URI to
+			// delimit the request Host header's value from the URI
+			// value.
+			if (fill_index == req_fields_len - 2)
+				return _pir_error;
+
+			req_fields[fill_index] = ch;
+			fill_index++;
+		}
+
+		(*data)++;
+		if (*data == data_end)
+			return _pir_eof;
+	}
 }
 
-static enum parser_result parser_do_ignore_line(struct parser *p, const char **data, const char *data_end) {
-        do {
-                char ch = *(*data)++;
-                if (ch == '\r') {
-                        p->state = ps_lf;
-                        break;
-                }
-        } while (*data != data_end);
+static enum _parser_internal_result
+_parser_do_ignore_line(uint8_t *req_parser_state, char *req_fields,
+		       size_t req_fields_len, const char **data,
+		       const char *data_end)
+{
+	for (;;) {
+		if (**data == '\r') {
+			*req_parser_state = ps_lf;
 
-        return pr_continue;
+			(*data)++;
+			if (*data == data_end)
+				return _pir_eof;
+
+			return _pir_continue;
+		}
+
+		(*data)++;
+		if (*data == data_end)
+			return _pir_eof;
+	}
 }
 
-static enum parser_result parser_do_lf(struct parser *p, const char **data, const char *data_end) {
-        if (*(*data)++ != '\n') {
-                // Expected a LF, but got something else
-                return pr_error;
-        }
+static enum _parser_internal_result
+_parser_do_lf(uint8_t *req_parser_state, char *req_fields,
+	      size_t req_fields_len, const char **data, const char *data_end)
+{
+	// Expect the LF character.
+	if (**data != '\n')
+		return _pir_error;
 
-        p->state = ps_header_name;
+	*req_parser_state = ps_header_name_0;
 
-        return pr_continue;
+	(*data)++;
+	if (*data == data_end)
+		return _pir_eof;
+
+	return _pir_continue;
 }
 
-static enum parser_result parser_do_header_name(struct parser *p, const char **data, const char *data_end) {
-        const char host_str[] = "Host: ";
+static enum _parser_internal_result
+_parser_do_header_name(uint8_t *req_parser_state, char *req_fields,
+		       size_t req_fields_len, const char **data,
+		       const char *data_end)
+{
+	const char host_str[] = "Host: ";
 
-        do {
-                if (*(*data)++ != host_str[p->tmp++]) {
-                        p->state = ps_ignore_line;
-                        p->tmp = 0;
-                        break;
-                }
+	for (;;) {
+		// Check if it's not the Host header, in which case we can just
+		// skip the entire line.
+		if (**data != host_str[*req_parser_state - ps_header_name_0]) {
+			*req_parser_state = ps_ignore_line;
 
-                if (p->tmp == sizeof(host_str) - 1) {
-                        p->state = ps_host;
-                        p->tmp = 0;
-                        break;
-                }
-        } while (*data != data_end);
+			(*data)++;
+			if (*data == data_end)
+				return _pir_eof;
 
-        return pr_continue;
+			return _pir_continue;
+		}
+
+		(*data)++;
+		(*req_parser_state)++;
+
+		if (*data == data_end)
+			return _pir_eof;
+
+		if (*req_parser_state == ps_host)
+			return _pir_continue;
+	}
 }
 
-static enum parser_result parser_do_host(struct parser *p, const char **data, const char *data_end) {
-        do {
-                char ch = *(*data)++;
-                if (ch == '\r')
-                        return pr_finished;
+#include <stdio.h>
 
-                if (p->host_len >= sizeof(p->host)) {
-                        // The request host is too long
-                        return pr_error;
-                }
+static enum _parser_internal_result
+_parser_do_host(uint8_t *req_parser_state, char *req_fields,
+		size_t req_fields_len, const char **data, const char *data_end)
+{
+	size_t fill_index = req_fields_len - 1;
+	while (req_fields[fill_index] != '\0')
+		fill_index--;
 
-                p->host[p->host_len] = ch;
-                p->host_len++;
-        } while (*data != data_end);
+	for (;;) {
+		char ch = **data;
+		if (ch == '\r') {
+			// Now, reverse the host to put it back in the correct
+			// order and move it against the request, after the NULL
+			// character.
 
-        return pr_continue;
+			_reverse(req_fields + fill_index + 1,
+				 req_fields + req_fields_len - 1);
+
+			size_t null_index = 0;
+			while (req_fields[null_index] != '\0')
+				null_index++;
+
+			size_t host_len = req_fields_len - fill_index - 1;
+			if (host_len != 0)
+				memmove(req_fields + null_index + 1,
+					req_fields + fill_index + 1, host_len);
+
+			// Finally, add the NULL character at the end to delimit
+			// the end of the host.
+			if ((null_index + 1) + host_len != req_fields_len)
+				req_fields[(null_index + 1) + host_len] = '\0';
+
+			return _pir_finished;
+		}
+
+		// We need at least one NULL character before the Host header's
+		// value to delimmit the request Host header's value from the
+		// URI value.
+		if (fill_index == 0)
+			return _pir_error;
+
+		req_fields[fill_index] = ch;
+		req_fields[fill_index - 1] = '\0';
+		fill_index--;
+
+		(*data)++;
+		(*req_parser_state)++;
+
+		if (*data == data_end)
+			return _pir_eof;
+	}
+}
+
+static void _reverse(char *data, char *data_end)
+{
+	while (data < data_end) {
+		// Swap bytes
+		char tmp = *data;
+		*data = *data_end;
+		*data_end = tmp;
+
+		data++;
+		data_end--;
+	}
 }
