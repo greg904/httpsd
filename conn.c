@@ -91,20 +91,14 @@ void conn_for_each(void (*cb)(int))
 	}
 }
 
-int conn_get_socket_fd(int id)
-{
-	return connections[id].socket_fd;
-}
+int conn_get_socket_fd(int id) { return connections[id].socket_fd; }
 
 void conn_set_timeout(int id, uint64_t timeout)
 {
 	connections[id].timeout = timeout;
 }
 
-uint64_t conn_get_timeout(int id)
-{
-	return connections[id].timeout;
-}
+uint64_t conn_get_timeout(int id) { return connections[id].timeout; }
 
 enum conn_wants_more conn_recv(int id, const char *data, size_t len)
 {
@@ -136,15 +130,16 @@ enum conn_wants_more conn_send(int id)
 	/* We can afford to rebuild the whole response on every EPOLLIN
 	   notification because there should only be 1 for a given socket most
 	   of the time so in reality, we're only going to do this once. */
-	size_t total_response_len = conn_write_redirect_response(id, reuse_tmp_buf, sizeof(reuse_tmp_buf));
+	size_t total_response_len = conn_write_redirect_response(
+	    id, reuse_tmp_buf, sizeof(reuse_tmp_buf));
 
 	for (;;) {
 		size_t remaining = total_response_len - c->res_bytes_sent;
 		if (remaining == 0)
 			return CWM_NO;
 
-		ssize_t written =
-		    write(c->socket_fd, reuse_tmp_buf + c->res_bytes_sent, remaining);
+		ssize_t written = write(
+		    c->socket_fd, reuse_tmp_buf + c->res_bytes_sent, remaining);
 		if (written == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				return CWM_YES;
@@ -164,7 +159,7 @@ static size_t conn_write_redirect_response(int id, char *buf, size_t capacity)
 	const char header[] =
 	    "HTTP/1.1 301 Moved Permanently\r\nLocation: https://";
 	size_t header_len = sizeof(header) - 1;
-	assert((cursor + header_len) - buf <= (ptrdiff_t) capacity);
+	assert((cursor + header_len) - buf <= (ptrdiff_t)capacity);
 	memcpy(cursor, header, header_len);
 	cursor += header_len;
 
@@ -174,28 +169,29 @@ static size_t conn_write_redirect_response(int id, char *buf, size_t capacity)
 
 	char *host_start = c->req_fields + sep_index + 1;
 	char *host_end = host_start;
-	while (*host_end != '\0' && host_end != c->req_fields + sizeof(c->req_fields))
+	while (*host_end != '\0' &&
+	       host_end != c->req_fields + sizeof(c->req_fields))
 		host_end++;
 	size_t host_len = host_end - host_start;
 
 	/* URL host */
-	assert((cursor + host_len) - buf <= (ptrdiff_t) capacity);
+	assert((cursor + host_len) - buf <= (ptrdiff_t)capacity);
 	memcpy(cursor, c->req_fields + sep_index + 1, host_len);
 	cursor += host_len;
 
 	/* URL slash */
-	assert((cursor + 1) - buf <= (ptrdiff_t) capacity);
+	assert((cursor + 1) - buf <= (ptrdiff_t)capacity);
 	*cursor = '/';
 	cursor++;
 
 	/* URL path */
-	assert((cursor + sep_index) - buf <= (ptrdiff_t) capacity);
+	assert((cursor + sep_index) - buf <= (ptrdiff_t)capacity);
 	memcpy(cursor, c->req_fields, sep_index);
 	cursor += sep_index;
 
 	const char footer[] = "\r\n\r\n";
 	size_t footer_len = sizeof(footer) - 1;
-	assert((cursor + footer_len) - buf <= (ptrdiff_t) capacity);
+	assert((cursor + footer_len) - buf <= (ptrdiff_t)capacity);
 	memcpy(cursor, footer, footer_len);
 	cursor += footer_len;
 

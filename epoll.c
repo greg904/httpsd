@@ -1,4 +1,4 @@
-// For accept4
+/* For accept4. */
 #define _GNU_SOURCE
 
 #include <assert.h>
@@ -30,15 +30,16 @@ static bool epoll_on_conn_out(int conn_id);
 
 static void epoll_timeout_helper(int conn_id);
 
-bool epoll_init(int server_socket_fd) {
+bool epoll_init(int server_socket_fd)
+{
 	epoll_server_socket_fd = server_socket_fd;
 
-        epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+	epoll_fd = epoll_create1(EPOLL_CLOEXEC);
 	if (epoll_fd == -1) {
 		perror("epoll_create()");
 		return false;
 	}
-	
+
 	struct epoll_event server_epoll_event;
 	server_epoll_event.data.u64 = 0;
 	/* We want to be notified when the server socket is ready to accept a
@@ -51,11 +52,12 @@ bool epoll_init(int server_socket_fd) {
 		return false;
 	}
 
-        return true;
+	return true;
 }
 
-bool epoll_wait_and_dispatch() {
-        for (;;) {
+bool epoll_wait_and_dispatch()
+{
+	for (;;) {
 		struct timespec now_ts;
 		if (clock_gettime(CLOCK_MONOTONIC, &now_ts) == -1) {
 			perror("clock_gettime()");
@@ -65,9 +67,10 @@ bool epoll_wait_and_dispatch() {
 		epoll_max_sleep = -1;
 		conn_for_each(epoll_timeout_helper);
 
-		int ret =
-		    epoll_wait(epoll_fd, epoll_event_buffer,
-			       sizeof(epoll_event_buffer) / sizeof(*epoll_event_buffer), epoll_max_sleep);
+		int ret = epoll_wait(epoll_fd, epoll_event_buffer,
+				     sizeof(epoll_event_buffer) /
+					 sizeof(*epoll_event_buffer),
+				     epoll_max_sleep);
 		if (ret == 0) {
 			/* One of the connections has exceeded its timeout, so
 			   we will close it automatically in the next
@@ -114,11 +117,10 @@ static bool epoll_on_event(const struct epoll_event *event)
 			return true;
 		}
 
-		/* This should never fail because we first
-		   register for EPOLLIN and then we register for
-		   just EPOLLOUT as soon as we want to send the
-		   response, so we should never have both of
-		   them at the same time. */
+		/* This should never fail because we first register for EPOLLIN
+		 * and then we register for just EPOLLOUT as soon as we want to
+		 * send the response, so we should never have both of them at
+		 * the same time. */
 		assert(in != out);
 
 		if (in && !epoll_on_conn_in(conn_id))
@@ -132,7 +134,7 @@ static bool epoll_on_event(const struct epoll_event *event)
 
 static bool epoll_on_server_in()
 {
-	/* The server socket is ready to accept one or many connection(s). */
+	/* The server socket is ready to accept one or more connection(s). */
 
 	for (;;) {
 		int client_fd = accept4(epoll_server_socket_fd, NULL, NULL,
@@ -160,7 +162,8 @@ static bool epoll_on_server_in()
 			perror("clock_gettime()");
 			return false;
 		}
-		uint64_t timeout = now.tv_sec * 1000 + now.tv_nsec / 1000000 + 2000;
+		uint64_t timeout =
+		    now.tv_sec * 1000 + now.tv_nsec / 1000000 + 2000;
 		conn_set_timeout(conn_id, timeout);
 
 		struct epoll_event client_epoll_event;
@@ -185,7 +188,8 @@ static bool epoll_on_conn_in(int conn_id)
 	int socket_fd = conn_get_socket_fd(conn_id);
 
 	for (;;) {
-		int bytes_read = read(socket_fd, reuse_tmp_buf, sizeof(reuse_tmp_buf));
+		int bytes_read =
+		    read(socket_fd, reuse_tmp_buf, sizeof(reuse_tmp_buf));
 		if (bytes_read == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				/* We have already read everything. */
@@ -204,7 +208,8 @@ static bool epoll_on_conn_in(int conn_id)
 			return true;
 		}
 
-		enum conn_wants_more wants_more = conn_recv(conn_id, reuse_tmp_buf, bytes_read);
+		enum conn_wants_more wants_more =
+		    conn_recv(conn_id, reuse_tmp_buf, bytes_read);
 		switch (wants_more) {
 		case CWM_YES:
 			continue;
@@ -263,7 +268,8 @@ static bool epoll_on_conn_out(int conn_id)
 	}
 }
 
-static void epoll_timeout_helper(int conn_id) {
+static void epoll_timeout_helper(int conn_id)
+{
 	uint64_t conn_timeout = conn_get_timeout(conn_id);
 
 	if (epoll_now >= conn_timeout) {

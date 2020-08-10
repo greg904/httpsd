@@ -19,7 +19,7 @@
 #include "util.h"
 
 #ifndef SERVER_PORT
-#	define SERVER_PORT 8080
+#define SERVER_PORT 8080
 #endif
 
 int main(int argc, char **argv)
@@ -27,7 +27,12 @@ int main(int argc, char **argv)
 	if (argc > 1) {
 		fputs("Usage: ", stderr);
 		fputs(argv[0], stderr);
-		fputs("\nStarts an HTTP server on port " STR_VALUE_MACRO(SERVER_PORT) " that redirects requests with the GET method to the same URL but with the HTTPS scheme instead, and drops all other requests.\n", stderr);
+		fputs("\nStarts an HTTP server on port " STR_VALUE_MACRO(
+			  SERVER_PORT) " that redirects requests with the GET "
+				       "method to the same URL but with the "
+				       "HTTPS scheme instead, and drops all "
+				       "other requests.\n",
+		      stderr);
 		return EXIT_FAILURE;
 	}
 
@@ -38,7 +43,7 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	struct sockaddr_in addr = { 0 };
+	struct sockaddr_in addr = {0};
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(SERVER_PORT);
@@ -61,4 +66,3 @@ int main(int argc, char **argv)
 			return EXIT_FAILURE;
 	}
 }
-
