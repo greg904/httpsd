@@ -137,7 +137,7 @@ int main(int argc, char **argv)
 		}
 		uint64_t now_msec = now.tv_sec * 1000 + now.tv_nsec / 1000000;
 
-		int first_client_to_timeout = -1;
+		uint16_t clients_to_timeout = 0;
 		int epoll_timeout = -1;
 
 		for (int i = 0; i < MAX_CLIENTS; i++) {
@@ -154,8 +154,10 @@ int main(int argc, char **argv)
 
 			uint64_t diff_msec = c->timeout - now_msec;
 			if (epoll_timeout == -1 || diff_msec < epoll_timeout) {
-				first_client_to_timeout = i;
+				clients_to_timeout = 1 << i;
 				epoll_timeout = diff_msec;
+			} else if (diff_msec == epoll_timeout) {
+				clients_to_timeout |= 1 << i;
 			}
 		}
 
@@ -166,9 +168,13 @@ int main(int argc, char **argv)
 			// The client had a chance to send us something before
 			// the timeout but it didn't do so, so we will close the
 			// socket and free the client object.
-			assert(first_client_to_timeout != -1);
-			close(clients[first_client_to_timeout].socket_fd);
-			client_free(first_client_to_timeout);
+			assert(clients_to_timeout != 0);
+			for (int i = 0; i < MAX_CLIENTS; i++) {
+				if ((clients_to_timeout & (1 << i)) != 0) {
+					close(clients[i].socket_fd);
+					client_free(i);
+				}
+			}
 			continue;
 		}
 		if (ret == -1) {
