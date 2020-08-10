@@ -24,8 +24,12 @@
 
 int main(int argc, char **argv)
 {
-	UNUSED(argc);
-	UNUSED(argv);
+	if (argc > 1) {
+		fputs("Usage: ", stderr);
+		fputs(argv[0], stderr);
+		fputs("\nStarts an HTTP server on port " STR_VALUE_MACRO(SERVER_PORT) " that redirects requests with the GET method to the same URL but with the HTTPS scheme instead, and drops all other requests.\n", stderr);
+		return EXIT_FAILURE;
+	}
 
 	int server_fd =
 	    socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
