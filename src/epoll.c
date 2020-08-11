@@ -103,7 +103,7 @@ static bool epoll_on_event(const struct epoll_event *event)
 		assert(in && !out);
 
 		if (!epoll_on_server_in())
-			return 1;
+			return false;
 	} else {
 		int conn_id = event->data.u64 - 1;
 
