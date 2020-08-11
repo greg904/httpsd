@@ -1,126 +1,126 @@
 #include <string.h>
 
-#include "parser.h"
+#include "reqparser.h"
 #include "util.h"
 
-enum parse_type {
+enum reqparser_type {
 	/**
-	 * Expects the GET method, and switches to PS_URI.
+	 * Expects the GET method, and switches to RT_URI.
 	 */
-	PS_METHOD_0 = 0,
+	RT_METHOD_0 = 0,
 
 	/**
 	 * Reads the request URI.
 	 */
-	PS_URI = 5,
+	RT_URI = 5,
 
 	/**
 	 * Ignores everything until it encounters a CR in which case it switches
-	 * to PS_LF.
+	 * to RT_LF.
 	 */
-	PS_IGNORE_LINE = 6,
+	RT_SKIP_LINE = 6,
 
 	/**
-	 * Expected a LF and switches to PS_HEADER_NAME_0.
+	 * Expected a LF and switches to RT_HEADER_NAME_0.
 	 */
-	PS_LF = 7,
+	RT_LF = 7,
 
 	/**
-	 * Reads the header's name. Switches either to PS_HOST if the header's
-	 * name is "Host" or to PS_IGNORE_LINE if it is not.
+	 * Reads the header's name. Switches either to RT_HOST if the header's
+	 * name is "Host" or to RT_SKIP_LINE if it is not.
 	 */
-	PS_HEADER_NAME_0 = 8,
+	RT_HEADER_NAME_0 = 8,
 
 	/**
 	 * Reads the Host header's value and finishes parsing.
 	 */
-	PS_HOST = 14,
+	RT_HOST = 14,
 };
 
-enum parser_internal {
-	PI_CONTINUE,
-	PI_EOF,
-	PI_ERROR,
-	PI_COMPLETE,
+enum reqparser_sub {
+	RS_CONTINUE,
+	RS_EOF,
+	RS_ERROR,
+	RS_COMPLETE,
 };
 
-static enum parser_internal parser_go_method(struct parse_args *args);
-static enum parser_internal parser_go_path(struct parse_args *args);
-static enum parser_internal parser_go_ignore_line(struct parse_args *args);
-static enum parser_internal parser_go_lf(struct parse_args *args);
-static enum parser_internal parser_go_header_name(struct parse_args *args);
-static enum parser_internal parser_go_host(struct parse_args *args);
+static enum reqparser_sub reqparser_method(struct reqparser_args *args);
+static enum reqparser_sub reqparser_path(struct reqparser_args *args);
+static enum reqparser_sub reqparser_skip_line(struct reqparser_args *args);
+static enum reqparser_sub reqparser_lf(struct reqparser_args *args);
+static enum reqparser_sub reqparser_header_name(struct reqparser_args *args);
+static enum reqparser_sub reqparser_host(struct reqparser_args *args);
 
-enum parse_completion parser_go(struct parse_args *args)
+enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 {
 	for (;;) {
-		enum parser_internal r;
+		enum reqparser_sub r;
 
 		switch (args->state) {
-		case PS_METHOD_0:
-		case PS_METHOD_0 + 1:
-		case PS_METHOD_0 + 2:
-		case PS_METHOD_0 + 3:
-		case PS_METHOD_0 + 4:
-			r = parser_go_method(args);
+		case RT_METHOD_0:
+		case RT_METHOD_0 + 1:
+		case RT_METHOD_0 + 2:
+		case RT_METHOD_0 + 3:
+		case RT_METHOD_0 + 4:
+			r = reqparser_method(args);
 			break;
-		case PS_URI:
-			r = parser_go_path(args);
+		case RT_URI:
+			r = reqparser_path(args);
 			break;
-		case PS_IGNORE_LINE:
-			r = parser_go_ignore_line(args);
+		case RT_SKIP_LINE:
+			r = reqparser_skip_line(args);
 			break;
-		case PS_LF:
-			r = parser_go_lf(args);
+		case RT_LF:
+			r = reqparser_lf(args);
 			break;
-		case PS_HEADER_NAME_0:
-		case PS_HEADER_NAME_0 + 1:
-		case PS_HEADER_NAME_0 + 2:
-		case PS_HEADER_NAME_0 + 3:
-		case PS_HEADER_NAME_0 + 4:
-		case PS_HEADER_NAME_0 + 5:
-			r = parser_go_header_name(args);
+		case RT_HEADER_NAME_0:
+		case RT_HEADER_NAME_0 + 1:
+		case RT_HEADER_NAME_0 + 2:
+		case RT_HEADER_NAME_0 + 3:
+		case RT_HEADER_NAME_0 + 4:
+		case RT_HEADER_NAME_0 + 5:
+			r = reqparser_header_name(args);
 			break;
-		case PS_HOST:
-			r = parser_go_host(args);
+		case RT_HOST:
+			r = reqparser_host(args);
 			break;
 		}
 
 		switch (r) {
-		case PI_CONTINUE:
+		case RS_CONTINUE:
 			continue;
-		case PI_EOF:
+		case RS_EOF:
 			/* Everything parsed successfully. */
 			return PC_NEEDS_MORE_DATA;
-		case PI_ERROR:
+		case RS_ERROR:
 			return PC_ERROR;
-		case PI_COMPLETE:
+		case RS_COMPLETE:
 			return PC_COMPLETE;
 		}
 	}
 }
 
-static enum parser_internal parser_go_method(struct parse_args *args)
+static enum reqparser_sub reqparser_method(struct reqparser_args *args)
 {
 	const char method_str[] = "GET /";
 
 	for (;;) {
 		/* Invalid HTTP method */
-		if (*args->data != method_str[args->state - PS_METHOD_0])
-			return PI_ERROR;
+		if (*args->data != method_str[args->state - RT_METHOD_0])
+			return RS_ERROR;
 
 		args->data++;
 		args->state++;
 
 		if (args->data == args->data_end)
-			return PI_EOF;
+			return RS_EOF;
 
-		if (args->state == PS_URI)
-			return PI_CONTINUE;
+		if (args->state == RT_URI)
+			return RS_CONTINUE;
 	}
 }
 
-static enum parser_internal parser_go_path(struct parse_args *args)
+static enum reqparser_sub reqparser_path(struct reqparser_args *args)
 {
 	size_t fill_index = 0;
 	while (args->req_fields[fill_index] != '\0')
@@ -133,21 +133,21 @@ static enum parser_internal parser_go_path(struct parse_args *args)
 			/* We can't accept this character because we use it
 			   internally to delimit the end of the path and the
 			   start of the request Host header's value. */
-			return PI_ERROR;
+			return RS_ERROR;
 		case ' ':
 			args->req_fields[fill_index] = '\0';
-			args->state = PS_IGNORE_LINE;
+			args->state = RT_SKIP_LINE;
 
 			args->data++;
 			if (args->data == args->data_end)
-				return PI_EOF;
+				return RS_EOF;
 
-			return PI_CONTINUE;
+			return RS_CONTINUE;
 		default:
 			/* We need at least one NULL character after the path to
 			   delimit it from the request Host header's value. */
 			if (fill_index == args->req_fields_len - 2)
-				return PI_ERROR;
+				return RS_ERROR;
 
 			args->req_fields[fill_index] = ch;
 			fill_index++;
@@ -155,73 +155,73 @@ static enum parser_internal parser_go_path(struct parse_args *args)
 
 		args->data++;
 		if (args->data == args->data_end)
-			return PI_EOF;
+			return RS_EOF;
 	}
 }
 
-static enum parser_internal parser_go_ignore_line(struct parse_args *args)
+static enum reqparser_sub reqparser_skip_line(struct reqparser_args *args)
 {
 	for (;;) {
 		if (*args->data == '\r') {
-			args->state = PS_LF;
+			args->state = RT_LF;
 
 			args->data++;
 			if (args->data == args->data_end)
-				return PI_EOF;
+				return RS_EOF;
 
-			return PI_CONTINUE;
+			return RS_CONTINUE;
 		}
 
 		args->data++;
 		if (args->data == args->data_end)
-			return PI_EOF;
+			return RS_EOF;
 	}
 }
 
-static enum parser_internal parser_go_lf(struct parse_args *args)
+static enum reqparser_sub reqparser_lf(struct reqparser_args *args)
 {
 	/* Expect the LF character. */
 	if (*args->data != '\n')
-		return PI_ERROR;
+		return RS_ERROR;
 
-	args->state = PS_HEADER_NAME_0;
+	args->state = RT_HEADER_NAME_0;
 
 	args->data++;
 	if (args->data == args->data_end)
-		return PI_EOF;
+		return RS_EOF;
 
-	return PI_CONTINUE;
+	return RS_CONTINUE;
 }
 
-static enum parser_internal parser_go_header_name(struct parse_args *args)
+static enum reqparser_sub reqparser_header_name(struct reqparser_args *args)
 {
 	const char host_str[] = "Host: ";
 
 	for (;;) {
 		/* Check if it's not the Host header, in which case we can just
 		   skip the entire line. */
-		if (*args->data != host_str[args->state - PS_HEADER_NAME_0]) {
-			args->state = PS_IGNORE_LINE;
+		if (*args->data != host_str[args->state - RT_HEADER_NAME_0]) {
+			args->state = RT_SKIP_LINE;
 
 			args->data++;
 			if (args->data == args->data_end)
-				return PI_EOF;
+				return RS_EOF;
 
-			return PI_CONTINUE;
+			return RS_CONTINUE;
 		}
 
 		args->data++;
 		args->state++;
 
 		if (args->data == args->data_end)
-			return PI_EOF;
+			return RS_EOF;
 
-		if (args->state == PS_HOST)
-			return PI_CONTINUE;
+		if (args->state == RT_HOST)
+			return RS_CONTINUE;
 	}
 }
 
-static enum parser_internal parser_go_host(struct parse_args *args)
+static enum reqparser_sub reqparser_host(struct reqparser_args *args)
 {
 	size_t fill_index = args->req_fields_len - 1;
 	while (args->req_fields[fill_index] != '\0')
@@ -254,13 +254,13 @@ static enum parser_internal parser_go_host(struct parse_args *args)
 				args->req_fields[(null_index + 1) + host_len] =
 				    '\0';
 
-			return PI_COMPLETE;
+			return RS_COMPLETE;
 		}
 
 		/* We need at least one NULL character before the request Host
 		   header's value to delimit it from path. */
 		if (fill_index == 0)
-			return PI_ERROR;
+			return RS_ERROR;
 
 		args->req_fields[fill_index] = ch;
 		args->req_fields[fill_index - 1] = '\0';
@@ -270,6 +270,6 @@ static enum parser_internal parser_go_host(struct parse_args *args)
 		args->state++;
 
 		if (args->data == args->data_end)
-			return PI_EOF;
+			return RS_EOF;
 	}
 }

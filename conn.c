@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #include "conn.h"
-#include "parser.h"
+#include "reqparser.h"
 #include "util.h"
 
 /* If this becomes greater than 16, then the uint16_t type that is used
@@ -38,7 +38,7 @@ struct conn {
 	 */
 	uint16_t res_bytes_sent : 12;
 
-	uint8_t req_parser_state : 4;
+	uint8_t reqparser_state : 4;
 
 	/**
 	 * At the end of the parsing, this will contain the request URI, then
@@ -79,7 +79,7 @@ void conn_free(int index)
 	/* Reset the fields for later, if the index gets reused. */
 	struct conn *c = &connections[index];
 	c->res_bytes_sent = 0;
-	c->req_parser_state = 0;
+	c->reqparser_state = 0;
 	memset(c->req_fields, 0, sizeof(c->req_fields));
 }
 
@@ -104,17 +104,17 @@ enum conn_wants_more conn_recv(int id, const char *data, size_t len)
 {
 	struct conn *c = &connections[id];
 
-	struct parse_args args;
-	args.state = c->req_parser_state;
+	struct reqparser_args args;
+	args.state = c->reqparser_state;
 	args.data = data;
 	args.data_end = data + len;
 	args.req_fields = c->req_fields;
 	args.req_fields_len = sizeof(c->req_fields);
 
-	enum parse_completion result = parser_go(&args);
+	enum reqparser_completion result = reqparser_feed(&args);
 	switch (result) {
 	case PC_NEEDS_MORE_DATA:
-		c->req_parser_state = args.state;
+		c->reqparser_state = args.state;
 		return CWM_YES;
 	case PC_ERROR:
 		return CWM_ERROR;

@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-struct parse_args {
+struct reqparser_args {
 	uint8_t state;
 
 	/* Input */
@@ -16,7 +16,7 @@ struct parse_args {
 	size_t req_fields_len;
 };
 
-enum parse_completion {
+enum reqparser_completion {
 	/**
 	 * The parsing has finished. The parser should not be fed data again.
 	 */
@@ -37,6 +37,6 @@ enum parse_completion {
 /**
  * Advances the HTTP request parsing.
  */
-enum parse_completion parser_go(struct parse_args *args);
+enum reqparser_completion reqparser_feed(struct reqparser_args *args);
 
 #endif
