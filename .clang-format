@@ -6,4 +6,5 @@ IndentWidth: 8
 BreakBeforeBraces: Linux
 ReflowComments: true
 SortIncludes: true
+IndentPPDirectives: AfterHash
 ...

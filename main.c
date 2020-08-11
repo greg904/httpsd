@@ -19,7 +19,7 @@
 #include "util.h"
 
 #ifndef SERVER_PORT
-#define SERVER_PORT 8080
+#	define SERVER_PORT 8080
 #endif
 
 int main(int argc, char **argv)
