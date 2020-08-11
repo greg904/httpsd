@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <errno.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -62,17 +63,18 @@ static struct conn connections[MAX_CONN_COUNT];
  */
 static uint16_t connections_bitmap;
 
+static bool conn_is_valid(int id);
+
 static size_t conn_write_redirect_response(int id, char *buf, size_t capacity);
 static size_t conn_write_too_long_response(char *buf, size_t capacity);
 
 int conn_new(int socket_fd)
 {
 	for (int id = 0; id < MAX_CONN_COUNT; id++) {
-		uint16_t mask = 1 << id;
 		/* Check if that index is already used. */
-		if ((connections_bitmap & mask) != 0)
+		if (conn_is_valid(id))
 			continue;
-		connections_bitmap |= mask;
+		connections_bitmap |= (1 << id);
 		connections[id].socket_fd = socket_fd;
 		return id;
 	}
@@ -93,7 +95,7 @@ void conn_free(int index)
 void conn_for_each(void (*cb)(int))
 {
 	for (int id = 0; id < MAX_CONN_COUNT; id++) {
-		if ((connections_bitmap & (1 << id)) != 0)
+		if (conn_is_valid(id))
 			cb(id);
 	}
 }
@@ -109,6 +111,7 @@ uint64_t conn_get_timeout(int id) { return connections[id].timeout; }
 
 enum conn_wants_more conn_recv(int id, const char *data, size_t len)
 {
+	assert(conn_is_valid(id));
 	struct conn *c = &connections[id];
 
 	struct reqparser_args args;
@@ -135,6 +138,7 @@ enum conn_wants_more conn_recv(int id, const char *data, size_t len)
 
 enum conn_wants_more conn_send(int id)
 {
+	assert(conn_is_valid(id));
 	struct conn *c = &connections[id];
 
 	/* We can afford to rebuild the whole response on every EPOLLIN
@@ -165,8 +169,14 @@ enum conn_wants_more conn_send(int id)
 	}
 }
 
+static bool conn_is_valid(int id)
+{
+	return (connections_bitmap & (1 << id)) != 0;
+}
+
 static size_t conn_write_redirect_response(int id, char *buf, size_t capacity)
 {
+	assert(conn_is_valid(id));
 	struct conn *c = &connections[id];
 	char *cursor = buf;
 

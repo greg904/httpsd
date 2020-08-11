@@ -66,10 +66,10 @@ bool epoll_wait_and_dispatch()
 	epoll_max_sleep = -1;
 	conn_for_each(epoll_timeout_helper);
 
-	int ret = epoll_wait(epoll_fd, epoll_event_buffer,
-				sizeof(epoll_event_buffer) /
-					sizeof(*epoll_event_buffer),
-				epoll_max_sleep);
+	int ret =
+	    epoll_wait(epoll_fd, epoll_event_buffer,
+		       sizeof(epoll_event_buffer) / sizeof(*epoll_event_buffer),
+		       epoll_max_sleep);
 	if (ret == 0) {
 		/* One of the connections has exceeded its timeout, so
 			we will close it automatically in the next
