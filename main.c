@@ -22,6 +22,10 @@
 #	define SERVER_PORT 8080
 #endif
 
+#ifndef SOCKET_BACKLOG
+#	define SOCKET_BACKLOG 32
+#endif
+
 int main(int argc, char **argv)
 {
 	if (argc > 1) {
@@ -56,7 +60,7 @@ int main(int argc, char **argv)
 	if (!epoll_init(server_fd))
 		return EXIT_FAILURE;
 
-	if (listen(server_fd, 4) == -1) {
+	if (listen(server_fd, SOCKET_BACKLOG) == -1) {
 		perror("listen()");
 		return EXIT_FAILURE;
 	}

@@ -10,9 +10,9 @@
 #include "reqparser.h"
 #include "util.h"
 
-/* If this becomes greater than 16, then the uint16_t type that is used
+/* If this becomes greater than 32, then the uint32_t type that is used
    throughout the code needs to be changed. */
-#define MAX_CONN_COUNT 16
+#define MAX_CONN_COUNT 28
 
 /**
  * Custom reqparser_state for RC_BUFFER_TOO_SMALL error, so that we don't need
@@ -61,7 +61,7 @@ static struct conn connections[MAX_CONN_COUNT];
  * For every connections info object that is currently valid (between a conn_new
  * and conn_free), a bit at the index of the ID is set in this bitmap.
  */
-static uint16_t connections_bitmap;
+static uint32_t connections_bitmap;
 
 static bool conn_is_valid(int id);
 
