@@ -227,7 +227,7 @@ static size_t conn_write_too_long_response(char *buf, size_t capacity)
 {
 	const char body[] =
 	    "HTTP/1.1 414 URI Too Long\r\nContent-Length: "
-	    "44\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nThe "
+	    "45\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nThe "
 	    "combined URL host and path is too large!\n";
 	size_t body_len = sizeof(body) - 1;
 	assert(body_len <= capacity);

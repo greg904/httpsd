@@ -280,7 +280,7 @@ static void reqparser_fix_req_fields(struct reqparser_args *args,
 			args->req_fields + old_host_index, host_len);
 
 	/* Finally, add the NULL character at the end to delimit
-		the end of the host. */
+	   the end of the host. */
 	if ((null_index + 1) + host_len != args->req_fields_len)
 		args->req_fields[(null_index + 1) + host_len] = '\0';
 }
