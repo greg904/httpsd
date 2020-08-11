@@ -52,6 +52,8 @@ static enum reqparser_sub reqparser_lf(struct reqparser_args *args);
 static enum reqparser_sub reqparser_header_name(struct reqparser_args *args);
 static enum reqparser_sub reqparser_host(struct reqparser_args *args);
 
+static void reqparser_fix_req_fields(struct reqparser_args *args, size_t old_host_index);
+
 enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 {
 	for (;;) {
@@ -233,30 +235,7 @@ static enum reqparser_sub reqparser_host(struct reqparser_args *args)
 	for (;;) {
 		char ch = *args->data;
 		if (ch == '\r') {
-			/* Now, reverse the host to put it back in the correct
-			   order and move it against the request path, after the
-			   NULL character. */
-
-			util_reverse(args->req_fields + fill_index + 1,
-				     args->req_fields + args->req_fields_len -
-					 1);
-
-			size_t null_index = 0;
-			while (args->req_fields[null_index] != '\0')
-				null_index++;
-
-			size_t host_len = args->req_fields_len - fill_index - 1;
-			if (host_len != 0)
-				memmove(args->req_fields + null_index + 1,
-					args->req_fields + fill_index + 1,
-					host_len);
-
-			/* Finally, add the NULL character at the end to delimit
-			   the end of the host. */
-			if ((null_index + 1) + host_len != args->req_fields_len)
-				args->req_fields[(null_index + 1) + host_len] =
-				    '\0';
-
+			reqparser_fix_req_fields(args, fill_index + 1);
 			return RS_COMPLETE;
 		}
 
@@ -274,4 +253,28 @@ static enum reqparser_sub reqparser_host(struct reqparser_args *args)
 		if (args->data == args->data_end)
 			return RS_EOF;
 	}
+}
+
+static void reqparser_fix_req_fields(struct reqparser_args *args, size_t old_host_index) {
+	/* Now, reverse the host to put it back in the correct
+	   order and move it against the request path, after the
+	   NULL character. */
+
+	util_reverse(args->req_fields + old_host_index, args->req_fields + args->req_fields_len - 1);
+
+	size_t null_index = 0;
+	while (args->req_fields[null_index] != '\0')
+		null_index++;
+
+	size_t host_len = args->req_fields_len - old_host_index;
+	if (host_len != 0)
+		memmove(args->req_fields + null_index + 1,
+			args->req_fields + old_host_index,
+			host_len);
+
+	/* Finally, add the NULL character at the end to delimit
+		the end of the host. */
+	if ((null_index + 1) + host_len != args->req_fields_len)
+		args->req_fields[(null_index + 1) + host_len] =
+			'\0';
 }

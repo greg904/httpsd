@@ -57,36 +57,36 @@ bool epoll_init(int server_socket_fd)
 
 bool epoll_wait_and_dispatch()
 {
-	for (;;) {
-		struct timespec now_ts;
-		if (clock_gettime(CLOCK_MONOTONIC, &now_ts) == -1) {
-			perror("clock_gettime()");
-			return false;
-		}
-		epoll_now = now_ts.tv_sec * 1000 + now_ts.tv_nsec / 1000000;
-		epoll_max_sleep = -1;
-		conn_for_each(epoll_timeout_helper);
-
-		int ret = epoll_wait(epoll_fd, epoll_event_buffer,
-				     sizeof(epoll_event_buffer) /
-					 sizeof(*epoll_event_buffer),
-				     epoll_max_sleep);
-		if (ret == 0) {
-			/* One of the connections has exceeded its timeout, so
-			   we will close it automatically in the next
-			   iteration. */
-			continue;
-		}
-		if (ret == -1) {
-			perror("epoll_wait()");
-			return false;
-		}
-
-		for (int i = 0; i < ret; i++) {
-			if (!epoll_on_event(&epoll_event_buffer[i]))
-				return false;
-		}
+	struct timespec now_ts;
+	if (clock_gettime(CLOCK_MONOTONIC, &now_ts) == -1) {
+		perror("clock_gettime()");
+		return false;
 	}
+	epoll_now = now_ts.tv_sec * 1000 + now_ts.tv_nsec / 1000000;
+	epoll_max_sleep = -1;
+	conn_for_each(epoll_timeout_helper);
+
+	int ret = epoll_wait(epoll_fd, epoll_event_buffer,
+				sizeof(epoll_event_buffer) /
+					sizeof(*epoll_event_buffer),
+				epoll_max_sleep);
+	if (ret == 0) {
+		/* One of the connections has exceeded its timeout, so
+			we will close it automatically in the next
+			iteration. */
+		return true;
+	}
+	if (ret == -1) {
+		perror("epoll_wait()");
+		return false;
+	}
+
+	for (int i = 0; i < ret; i++) {
+		if (!epoll_on_event(&epoll_event_buffer[i]))
+			return false;
+	}
+
+	return true;
 }
 
 static bool epoll_on_event(const struct epoll_event *event)
