@@ -146,10 +146,10 @@ enum conn_wants_more conn_send(int id)
 	   of the time so in reality, we're only going to do this once. */
 	size_t total_response_len =
 	    c->reqparser_state == REQPARSER_CUSTOM_ERR
-		? conn_write_too_long_response(reuse_tmp_buf,
-					       sizeof(reuse_tmp_buf))
-		: conn_write_redirect_response(id, reuse_tmp_buf,
-					       sizeof(reuse_tmp_buf));
+		? conn_write_too_long_response(util_tmp_buf,
+					       sizeof(util_tmp_buf))
+		: conn_write_redirect_response(id, util_tmp_buf,
+					       sizeof(util_tmp_buf));
 
 	for (;;) {
 		size_t remaining = total_response_len - c->res_bytes_sent;
@@ -157,7 +157,7 @@ enum conn_wants_more conn_send(int id)
 			return CWM_NO;
 
 		ssize_t written = write(
-		    c->socket_fd, reuse_tmp_buf + c->res_bytes_sent, remaining);
+		    c->socket_fd, util_tmp_buf + c->res_bytes_sent, remaining);
 		if (written == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				return CWM_YES;

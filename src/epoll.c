@@ -74,8 +74,8 @@ bool epoll_wait_and_dispatch()
 		       epoll_max_sleep);
 	if (ret == 0) {
 		/* One of the connections has exceeded its timeout, so
-			we will close it automatically in the next
-			iteration. */
+		   we will close it automatically in the next
+		   iteration. */
 		return true;
 	}
 	if (ret == -1) {
@@ -120,9 +120,9 @@ static bool epoll_on_event(const struct epoll_event *event)
 		}
 
 		/* This should never fail because we first register for EPOLLIN
-		 * and then we register for just EPOLLOUT as soon as we want to
-		 * send the response, so we should never have both of them at
-		 * the same time. */
+		   and then we register for just EPOLLOUT as soon as we want to
+		   send the response, so we should never have both of them at
+		   the same time. */
 		assert(in != out);
 
 		if (in && !epoll_on_conn_in(conn_id))
@@ -191,7 +191,7 @@ static bool epoll_on_conn_in(int conn_id)
 
 	for (;;) {
 		int bytes_read =
-		    read(socket_fd, reuse_tmp_buf, sizeof(reuse_tmp_buf));
+		    read(socket_fd, util_tmp_buf, sizeof(util_tmp_buf));
 		if (bytes_read == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				/* We have already read everything. */
@@ -211,7 +211,7 @@ static bool epoll_on_conn_in(int conn_id)
 		}
 
 		enum conn_wants_more wants_more =
-		    conn_recv(conn_id, reuse_tmp_buf, bytes_read);
+		    conn_recv(conn_id, util_tmp_buf, bytes_read);
 		switch (wants_more) {
 		case CWM_YES:
 			continue;

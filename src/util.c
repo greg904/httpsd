@@ -1,6 +1,6 @@
 #include "util.h"
 
-char reuse_tmp_buf[512];
+char util_tmp_buf[512];
 
 void util_reverse(char *start, char *end)
 {

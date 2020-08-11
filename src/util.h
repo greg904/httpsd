@@ -9,7 +9,7 @@
 /**
  * A temporary buffer used to read requests or write responses.
  */
-extern char reuse_tmp_buf[512];
+extern char util_tmp_buf[512];
 
 void util_reverse(char *start, char *end);
 
