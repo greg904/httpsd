@@ -5,9 +5,11 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 

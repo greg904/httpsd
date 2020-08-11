@@ -1,6 +1,7 @@
 #ifndef G9_HTTPS_REDIRECT_CONN_H
 #define G9_HTTPS_REDIRECT_CONN_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 /**
