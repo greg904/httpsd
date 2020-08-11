@@ -38,10 +38,11 @@ enum reqparser_type {
 };
 
 enum reqparser_sub {
+	RS_COMPLETE,
 	RS_CONTINUE,
 	RS_EOF,
 	RS_ERROR,
-	RS_COMPLETE,
+	RS_BUFFER_TOO_SMALL,
 };
 
 static enum reqparser_sub reqparser_method(struct reqparser_args *args);
@@ -87,15 +88,17 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 		}
 
 		switch (r) {
+		case RS_COMPLETE:
+			return PC_COMPLETE;
 		case RS_CONTINUE:
 			continue;
 		case RS_EOF:
 			/* Everything parsed successfully. */
 			return PC_NEEDS_MORE_DATA;
 		case RS_ERROR:
-			return PC_ERROR;
-		case RS_COMPLETE:
-			return PC_COMPLETE;
+			return PC_BAD_DATA;
+		case RS_BUFFER_TOO_SMALL:
+			return PC_BUFFER_TOO_SMALL;
 		}
 	}
 }
@@ -147,7 +150,7 @@ static enum reqparser_sub reqparser_path(struct reqparser_args *args)
 			/* We need at least one NULL character after the path to
 			   delimit it from the request Host header's value. */
 			if (fill_index == args->req_fields_len - 2)
-				return RS_ERROR;
+				return RS_BUFFER_TOO_SMALL;
 
 			args->req_fields[fill_index] = ch;
 			fill_index++;
@@ -259,11 +262,10 @@ static enum reqparser_sub reqparser_host(struct reqparser_args *args)
 
 		/* We need at least one NULL character before the request Host
 		   header's value to delimit it from path. */
-		if (fill_index == 0)
-			return RS_ERROR;
+		if (fill_index == 0 || args->req_fields[fill_index - 1] != '\0')
+			return RS_BUFFER_TOO_SMALL;
 
 		args->req_fields[fill_index] = ch;
-		args->req_fields[fill_index - 1] = '\0';
 		fill_index--;
 
 		args->data++;

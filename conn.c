@@ -14,6 +14,12 @@
 #define MAX_CONN_COUNT 16
 
 /**
+ * Custom reqparser_state for RC_BUFFER_TOO_SMALL error, so that we don't need
+ * another field in the conn struct.
+ */
+#define REQPARSER_CUSTOM_ERR 15
+
+/**
  * Includes the state about a socket connection to the HTTP server socket. Note
  * that the size of this struct is precisely 256 bytes.
  */
@@ -57,6 +63,7 @@ static struct conn connections[MAX_CONN_COUNT];
 static uint16_t connections_bitmap;
 
 static size_t conn_write_redirect_response(int id, char *buf, size_t capacity);
+static size_t conn_write_too_long_response(char *buf, size_t capacity);
 
 int conn_new(int socket_fd)
 {
@@ -113,12 +120,15 @@ enum conn_wants_more conn_recv(int id, const char *data, size_t len)
 
 	enum reqparser_completion result = reqparser_feed(&args);
 	switch (result) {
+	case PC_COMPLETE:
+		return CWM_NO;
 	case PC_NEEDS_MORE_DATA:
 		c->reqparser_state = args.state;
 		return CWM_YES;
-	case PC_ERROR:
+	case PC_BAD_DATA:
 		return CWM_ERROR;
-	case PC_COMPLETE:
+	case PC_BUFFER_TOO_SMALL:
+		c->reqparser_state = REQPARSER_CUSTOM_ERR;
 		return CWM_NO;
 	}
 }
@@ -130,8 +140,12 @@ enum conn_wants_more conn_send(int id)
 	/* We can afford to rebuild the whole response on every EPOLLIN
 	   notification because there should only be 1 for a given socket most
 	   of the time so in reality, we're only going to do this once. */
-	size_t total_response_len = conn_write_redirect_response(
-	    id, reuse_tmp_buf, sizeof(reuse_tmp_buf));
+	size_t total_response_len =
+	    c->reqparser_state == REQPARSER_CUSTOM_ERR
+		? conn_write_too_long_response(reuse_tmp_buf,
+					       sizeof(reuse_tmp_buf))
+		: conn_write_redirect_response(id, reuse_tmp_buf,
+					       sizeof(reuse_tmp_buf));
 
 	for (;;) {
 		size_t remaining = total_response_len - c->res_bytes_sent;
@@ -189,11 +203,24 @@ static size_t conn_write_redirect_response(int id, char *buf, size_t capacity)
 	memcpy(cursor, c->req_fields, sep_index);
 	cursor += sep_index;
 
-	const char footer[] = "\r\n\r\n";
+	const char footer[] =
+	    "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 	size_t footer_len = sizeof(footer) - 1;
 	assert((cursor + footer_len) - buf <= (ptrdiff_t)capacity);
 	memcpy(cursor, footer, footer_len);
 	cursor += footer_len;
 
 	return cursor - buf;
+}
+
+static size_t conn_write_too_long_response(char *buf, size_t capacity)
+{
+	const char body[] =
+	    "HTTP/1.1 414 URI Too Long\r\nContent-Length: "
+	    "44\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nThe "
+	    "combined URL host and path is too large!\n";
+	size_t body_len = sizeof(body) - 1;
+	assert(body_len <= capacity);
+	memcpy(buf, body, body_len);
+	return body_len;
 }

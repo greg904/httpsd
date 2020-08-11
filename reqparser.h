@@ -31,7 +31,13 @@ enum reqparser_completion {
 	 * The parser has encountered an error because the data is in an invalid
 	 * format. The parser should not be fed data again.
 	 */
-	PC_ERROR,
+	PC_BAD_DATA,
+
+	/**
+	 * There is not enough space in the buffer to store the request fields
+	 * (path and host).
+	 */
+	PC_BUFFER_TOO_SMALL,
 };
 
 /**
