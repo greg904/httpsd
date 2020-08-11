@@ -5,4 +5,6 @@ add_executable(g9-https-redirect src/conn.c src/conn.h src/epoll.c src/epoll.h
 	src/main.c src/reqparser.c src/reqparser.h src/util.c src/util.h)
 
 install(TARGETS g9-https-redirect
-	RUNTIME DESTINATION bin)
+	RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+install(FILES g9-https-redirect.service
+	DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/systemd/system)

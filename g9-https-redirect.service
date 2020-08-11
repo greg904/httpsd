@@ -1,0 +1,14 @@
+[Unit]
+Description=A simple HTTP 1.1 server that redirects clients to HTTPS URLs
+Documentation=https://github.com/greg904/g9-https-redirect
+After=network.target
+
+[Service]
+Type=exec
+ExecStart=/bin/g9-https-redirect
+DynamicUser=yes
+LockPersonality=yes
+LimitNPROC=1
+
+[Install]
+WantedBy=multi-user.target
