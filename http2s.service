@@ -1,11 +1,11 @@
 [Unit]
 Description=A simple HTTP 1.1 server that redirects clients to HTTPS URLs
-Documentation=https://github.com/greg904/g9-https-redirect
+Documentation=https://github.com/greg904/http2s
 After=network.target
 
 [Service]
 Type=exec
-ExecStart=/bin/g9-https-redirect
+ExecStart=/bin/http2s
 DynamicUser=yes
 LockPersonality=yes
 LimitNPROC=1
