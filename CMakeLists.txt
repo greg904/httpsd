@@ -1,18 +1,20 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.16.3)
 project(http2s C)
 
-add_executable(http2s
-	src/conn.c
-	src/conn.h
-	src/epoll.c
-	src/epoll.h
-	src/main.c
-	src/reqparser.c
-	src/reqparser.h
-	src/util.c
-	src/util.h)
+include(GNUInstallDirs)
+include(cmake/FindSystemD.cmake)
 
-install(TARGETS http2s
-	RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
-install(FILES http2s.service
-	DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/systemd/system)
+option(WITH_SYSTEMD "install the systemd service file" ${SYSTEMD_FOUND})
+
+add_subdirectory(src)
+
+# systemd service file
+if (WITH_SYSTEMD)
+	configure_file(
+		"${PROJECT_SOURCE_DIR}/data/http2s.service.in"
+		"${PROJECT_BINARY_DIR}/data/http2s.service"
+	)
+
+	install(FILES "${PROJECT_BINARY_DIR}/data/http2s.service"
+		DESTINATION ${INSTALL_SYSTEMD_UNITDIR})
+endif()
