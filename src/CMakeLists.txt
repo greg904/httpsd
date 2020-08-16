@@ -1,4 +1,6 @@
 add_executable(http2s
+	cli.c
+	cli.h
 	conn.c
 	conn.h
 	epoll.c

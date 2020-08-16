@@ -20,28 +20,23 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 
+#include "cli.h"
 #include "epoll.h"
 #include "util.h"
 
-#ifndef SERVER_PORT
-#	define SERVER_PORT 8080
-#endif
-
-#ifndef SOCKET_BACKLOG
-#	define SOCKET_BACKLOG 32
-#endif
-
 int main(int argc, char **argv)
 {
-	if (argc > 1) {
-		fputs("Usage: ", stderr);
-		fputs(argv[0], stderr);
-		fputs("\nStarts an HTTP server on port " STR_VALUE_MACRO(
-			  SERVER_PORT) " that redirects requests with the GET "
-				       "method to the same URL but with the "
-				       "HTTPS scheme instead, and drops all "
-				       "other requests.\n",
-		      stderr);
+	struct cli_options options;
+	options.server_port = 80;
+	options.socket_backlog = 32;
+
+	switch (cli_parse_args(&options, argc, argv)) {
+	case CPR_SUCCESS:
+		break;
+	case CPR_STOP:
+		/* For example, if the help message was requested. */
+		return EXIT_SUCCESS;
+	case CPR_ERROR:
 		return EXIT_FAILURE;
 	}
 
@@ -55,7 +50,7 @@ int main(int argc, char **argv)
 	struct sockaddr_in addr = {0};
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(SERVER_PORT);
+	addr.sin_port = htons(options.server_port);
 
 	if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		perror("bind()");
@@ -65,7 +60,7 @@ int main(int argc, char **argv)
 	if (!epoll_init(server_fd))
 		return EXIT_FAILURE;
 
-	if (listen(server_fd, SOCKET_BACKLOG) == -1) {
+	if (listen(server_fd, options.socket_backlog) == -1) {
 		perror("listen()");
 		return EXIT_FAILURE;
 	}
