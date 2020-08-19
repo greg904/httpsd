@@ -24,36 +24,36 @@
 
 enum reqparser_type {
 	/**
-	 * Expects the GET method, and switches to RT_URI.
+	 * Expects the HTTP method, and then switches to RT_URI.
 	 */
-	RT_METHOD_0 = 0,
+	RT_METHOD = 0,
 
 	/**
 	 * Reads the request URI.
 	 */
-	RT_URI = 5,
+	RT_URI = 1,
 
 	/**
 	 * Ignores everything until it encounters a CR in which case it switches
 	 * to RT_LF.
 	 */
-	RT_SKIP_LINE = 6,
+	RT_SKIP_LINE = 2,
 
 	/**
 	 * Expected a LF and switches to RT_HEADER_NAME_0.
 	 */
-	RT_LF = 7,
+	RT_LF = 3,
 
 	/**
 	 * Reads the header's name. Switches either to RT_HOST if the header's
 	 * name is "Host" or to RT_SKIP_LINE if it is not.
 	 */
-	RT_HEADER_NAME_0 = 8,
+	RT_HEADER_NAME_0 = 4,
 
 	/**
 	 * Reads the Host header's value and finishes parsing.
 	 */
-	RT_HOST = 14,
+	RT_HOST = 10,
 };
 
 enum reqparser_sub {
@@ -80,11 +80,7 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 		enum reqparser_sub r;
 
 		switch (args->state) {
-		case RT_METHOD_0:
-		case RT_METHOD_0 + 1:
-		case RT_METHOD_0 + 2:
-		case RT_METHOD_0 + 3:
-		case RT_METHOD_0 + 4:
+		case RT_METHOD:
 			r = reqparser_method(args);
 			break;
 		case RT_URI:
@@ -129,21 +125,21 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 
 static enum reqparser_sub reqparser_method(struct reqparser_args *args)
 {
-	const char method_str[] = "GET /";
-
 	for (;;) {
-		/* Invalid HTTP method */
-		if (*args->data != method_str[args->state - RT_METHOD_0])
-			return RS_ERROR;
+		// Wait until we get the space that delimits the method.
+		if (*args->data == ' ') {
+			args->state = RT_URI;
+
+			args->data++;
+			if (args->data == args->data_end)
+				return RS_EOF;
+
+			return RS_CONTINUE;
+		}
 
 		args->data++;
-		args->state++;
-
 		if (args->data == args->data_end)
 			return RS_EOF;
-
-		if (args->state == RT_URI)
-			return RS_CONTINUE;
 	}
 }
 

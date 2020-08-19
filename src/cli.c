@@ -12,9 +12,9 @@ void cli_print_usage(FILE *stream, const char *argv0)
 {
 	fputs("Usage: ", stream);
 	fputs(argv0, stream);
-	fputs(" [OPTION]...\nStarts an HTTP server that redirects requests "
-	      "with the GET method to the same URL but with the HTTPS scheme "
-	      "instead, and drops all other requests.\n\n"
+	fputs(" [OPTION]...\nStarts an HTTP server that redirects requests to "
+	      "the same URL but with the HTTPS scheme instead, and drops "
+	      "invalid requests.\n\n"
 	      "  -p, --port=PORT  set port to start listening on\n"
 	      "  -b, --backlog    set maximum amount of connections waiting to "
 	      "be accepted\n"
