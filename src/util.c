@@ -60,7 +60,7 @@ bool util_strcmp(const char *a, const char *b)
 
 uint16_t util_htob16(uint16_t val) { return ((val & 0xFF) << 8) | (val >> 8); }
 
-void *memcpy(void *dest, const void *src, size_t n)
+void *memcpy(void *restrict dest, const void *restrict src, size_t n)
 {
 	char *dest_c = (char *)dest;
 	const char *src_c = (const char *)src;

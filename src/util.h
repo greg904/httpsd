@@ -54,7 +54,7 @@ uint16_t util_htob16(uint16_t val);
  * defined when using the freestanding environment with GCC.
  */
 
-void *memcpy(void *dest, const void *src, size_t n);
+void *memcpy(void *restrict dest, const void *restrict src, size_t n);
 void *memmove(void *dest, const void *src, size_t n);
 void *memset(void *dest, int c, size_t n);
 int memcmp(const void *a, const void *b, size_t n);
