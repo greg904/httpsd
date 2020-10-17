@@ -122,6 +122,12 @@ static bool epoll_on_event(const struct sys_epoll_event *event)
 			return true;
 		}
 
+		/* This should never fail because we first register for EPOLLIN
+		   and then we register for just EPOLLOUT as soon as we want to
+		   send the response, so we should never have both of them at
+		   the same time. */
+		ASSERT(in != out);
+
 		if (in && !epoll_on_conn_in(conn_id))
 			return false;
 		if (out && !epoll_on_conn_out(conn_id))
@@ -150,6 +156,7 @@ static bool epoll_on_server_in()
 		}
 
 		int conn_id = conn_new(client_fd);
+		ASSERT(conn_id != -1);
 
 		/* Setup the timeout */
 		struct sys_timespec now;

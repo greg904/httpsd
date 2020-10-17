@@ -75,6 +75,8 @@ static void reqparser_fix_req_fields(struct reqparser_args *args,
 enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 {
 	for (;;) {
+		ASSERT(args->data < args->data_end);
+
 		enum reqparser_sub r;
 
 		switch (args->state) {
@@ -101,6 +103,8 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 		case RT_HOST:
 			r = reqparser_host(args);
 			break;
+		default:
+			ASSERT(false);
 		}
 
 		switch (r) {
@@ -115,6 +119,8 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 			return PC_BAD_DATA;
 		case RS_BUFFER_TOO_SMALL:
 			return PC_BUFFER_TOO_SMALL;
+		default:
+			ASSERT(false);
 		}
 	}
 }
@@ -154,6 +160,12 @@ static enum reqparser_sub reqparser_path(struct reqparser_args *args)
 			   start of the request Host header's value. */
 			return RS_ERROR;
 		case ' ':
+			if (fill_index == 0) {
+				/* Empty path ?! */
+				return RS_ERROR;
+			}
+
+			ASSERT(fill_index < args->req_fields_len);
 			args->req_fields[fill_index] = '\0';
 			args->state = RT_SKIP_LINE;
 
@@ -163,11 +175,18 @@ static enum reqparser_sub reqparser_path(struct reqparser_args *args)
 
 			return RS_CONTINUE;
 		default:
+			if (fill_index == 0 && ch != '/') {
+				/* The first character must be a forward
+				   slash. */
+				return RS_ERROR;
+			}
+
 			/* We need at least one NULL character after the path to
 			   delimit it from the request Host header's value. */
 			if (fill_index == args->req_fields_len - 2)
 				return RS_BUFFER_TOO_SMALL;
 
+			ASSERT(fill_index < args->req_fields_len);
 			args->req_fields[fill_index] = ch;
 			fill_index++;
 		}
@@ -219,6 +238,9 @@ static enum reqparser_sub reqparser_header_name(struct reqparser_args *args)
 	for (;;) {
 		/* Check if it's not the Host header, in which case we can just
 		   skip the entire line. */
+		ASSERT(args->state >= RT_HEADER_NAME_0 &&
+		       args->state - RT_HEADER_NAME_0 <
+			   (sizeof(host_str) - 1) / sizeof(char));
 		if (*args->data != host_str[args->state - RT_HEADER_NAME_0]) {
 			args->state = RT_SKIP_LINE;
 
@@ -242,13 +264,21 @@ static enum reqparser_sub reqparser_header_name(struct reqparser_args *args)
 
 static enum reqparser_sub reqparser_host(struct reqparser_args *args)
 {
+	ASSERT(args->req_fields_len >= 1);
 	size_t fill_index = args->req_fields_len - 1;
-	while (args->req_fields[fill_index] != '\0')
+
+	while (args->req_fields[fill_index] != '\0') {
+		ASSERT(fill_index > 0);
 		fill_index--;
+	}
 
 	for (;;) {
 		char ch = *args->data;
 		if (ch == '\r') {
+			if (fill_index == args->req_fields_len - 1) {
+				/* Host is empty?! */
+				return RS_ERROR;
+			}
 			reqparser_fix_req_fields(args, fill_index + 1);
 			return RS_COMPLETE;
 		}
@@ -272,24 +302,25 @@ static enum reqparser_sub reqparser_host(struct reqparser_args *args)
 static void reqparser_fix_req_fields(struct reqparser_args *args,
 				     size_t old_host_index)
 {
+	ASSERT(args->req_fields_len >= 1);
+
 	/* Now, reverse the host to put it back in the correct
 	   order and move it against the request path, after the
 	   NULL character. */
 
 	util_reverse(args->req_fields + old_host_index,
-		     args->req_fields + args->req_fields_len - 1);
+		     args->req_fields + (args->req_fields_len - 1));
 
-	size_t null_index = 0;
-	while (args->req_fields[null_index] != '\0')
-		null_index++;
+	size_t sep_index = util_strlen(args->req_fields);
+	ASSERT(sep_index <= args->req_fields_len - 1);
 
 	size_t host_len = args->req_fields_len - old_host_index;
 	if (host_len != 0)
-		memmove(args->req_fields + null_index + 1,
+		memmove(args->req_fields + (sep_index + 1),
 			args->req_fields + old_host_index, host_len);
 
 	/* Finally, add the NULL character at the end to delimit
 	   the end of the host. */
-	if ((null_index + 1) + host_len != args->req_fields_len)
-		args->req_fields[(null_index + 1) + host_len] = '\0';
+	if ((sep_index + 1) + host_len != args->req_fields_len)
+		args->req_fields[(sep_index + 1) + host_len] = '\0';
 }

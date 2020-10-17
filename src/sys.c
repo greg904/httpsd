@@ -38,7 +38,8 @@ int sys_close(int fd) { return (int)sys_1(3, fd); }
 __attribute__((noreturn)) void sys_exit(int code)
 {
 	sys_1(60, code);
-	__builtin_unreachable();
+	for (;;) {
+	}
 }
 
 int sys_socket(int family, int type, int protocol)

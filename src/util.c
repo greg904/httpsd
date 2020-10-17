@@ -19,13 +19,15 @@
 
 char util_tmp_buf[512];
 
-bool _fputs(int fd, const char *str, size_t len)
+bool _util_fputs(int fd, const char *str, size_t len)
 {
 	return sys_write(fd, str, len) == len;
 }
 
 void util_reverse(char *start, char *end)
 {
+	ASSERT(end >= start);
+
 	while (start < end) {
 		/* Swap bytes. */
 		char tmp = *start;
@@ -65,6 +67,8 @@ void *memcpy(void *restrict dest, const void *restrict src, size_t n)
 	char *dest_c = (char *)dest;
 	const char *src_c = (const char *)src;
 
+	ASSERT(dest_c <= src_c || dest_c >= src_c + n);
+
 	for (; n != 0; --n, ++src_c, ++dest_c)
 		*dest_c = *src_c;
 
@@ -77,7 +81,7 @@ void *memmove(void *dest, const void *src, size_t n)
 	const char *src_c = (const char *)src;
 
 	/* My memcpy implementation handles that case correctly already. */
-	if (dest_c <= src_c)
+	if (dest_c <= src_c || dest_c >= src_c + n)
 		return memcpy(dest, src, n);
 
 	/* Otherwise, do it in reverse. */

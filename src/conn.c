@@ -203,6 +203,7 @@ static size_t conn_write_redirect_response(int id, char *buf, size_t capacity)
 	const char header[] =
 	    "HTTP/1.1 301 Moved Permanently\r\nLocation: https://";
 	size_t header_len = sizeof(header) - 1;
+	ASSERT(cursor + header_len <= buf + capacity);
 	memcpy(cursor, header, header_len);
 	cursor += header_len;
 
@@ -212,22 +213,25 @@ static size_t conn_write_redirect_response(int id, char *buf, size_t capacity)
 
 	char *host_start = c->req_fields + sep_index + 1;
 	char *host_end = host_start;
-	while (*host_end != '\0' &&
-	       host_end != c->req_fields + sizeof(c->req_fields))
+	while (host_end != c->req_fields + sizeof(c->req_fields) &&
+	       *host_end != '\0')
 		host_end++;
 	size_t host_len = host_end - host_start;
 
 	/* URL host */
+	ASSERT(cursor + host_len <= buf + capacity);
 	memcpy(cursor, c->req_fields + sep_index + 1, host_len);
 	cursor += host_len;
 
 	/* URL path */
+	ASSERT(cursor + sep_index <= buf + capacity);
 	memcpy(cursor, c->req_fields, sep_index);
 	cursor += sep_index;
 
 	const char footer[] =
 	    "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 	size_t footer_len = sizeof(footer) - 1;
+	ASSERT(cursor + footer_len <= buf + capacity);
 	memcpy(cursor, footer, footer_len);
 	cursor += footer_len;
 
@@ -241,6 +245,7 @@ static size_t conn_write_too_long_response(char *buf, size_t capacity)
 	    "45\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nThe "
 	    "combined URL host and path is too large!\n";
 	size_t body_len = sizeof(body) - 1;
+	ASSERT(body_len <= capacity);
 	memcpy(buf, body, body_len);
 	return body_len;
 }

@@ -29,8 +29,15 @@
 #define STR_VALUE(x) #x
 #define STR_VALUE_MACRO(x) STR_VALUE(x)
 
-#define FPUTS_0(fd, str) _fputs(fd, str, util_strlen(str))
-#define FPUTS_A(fd, str) _fputs(fd, str, sizeof(str) - 1)
+#define FPUTS_0(fd, str) _util_fputs(fd, str, util_strlen(str))
+#define FPUTS_A(fd, str) _util_fputs(fd, str, sizeof(str) - 1)
+
+#define ASSERT(check)                                                          \
+	if (!(check)) {                                                        \
+		FPUTS_A(2, "Assertion failed at " __FILE__                     \
+			   ":" STR_VALUE(__LINE__) ".");                       \
+		sys_exit(1);                                                   \
+	}
 
 /**
  * A temporary buffer used to read requests or write responses.
@@ -40,7 +47,7 @@ extern char util_tmp_buf[512];
 /**
  * This function is used by the FPUTS_0 and FPUTS_A macros.
  */
-bool _fputs(int fd, const char *str, size_t len);
+bool _util_fputs(int fd, const char *str, size_t len);
 
 void util_reverse(char *start, char *end);
 
