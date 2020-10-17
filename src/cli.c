@@ -15,90 +15,121 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <errno.h>
-#include <getopt.h>
 #include <limits.h>
 #include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #include "cli.h"
+#include "sys.h"
+#include "util.h"
 
-void cli_print_usage(FILE *stream, const char *argv0)
+bool cli_print_usage(int fd, const char *arg0)
 {
-	fputs("Usage: ", stream);
-	fputs(argv0, stream);
-	fputs(" [OPTION]...\nStarts an HTTP server that redirects requests to "
-	      "the same URL but with the HTTPS scheme instead, and drops "
-	      "invalid requests.\n\n"
-	      "  -p, --port=PORT  set port to start listening on\n"
-	      "  -b, --backlog    set maximum amount of connections waiting to "
-	      "be accepted\n"
-	      "  -h, --help       display this help and exit\n",
-	      stream);
+	return FPUTS_A(fd, "Usage: ") && FPUTS_0(fd, arg0) &&
+	       FPUTS_A(
+		   fd,
+		   " [OPTION]...\nStarts an HTTP server that redirects "
+		   "requests to "
+		   "the same URL but with the HTTPS scheme instead, and drops "
+		   "invalid requests.\n\n"
+		   "  -p, --port=PORT  set port to start listening on\n"
+		   "  -b, --backlog    set maximum amount of connections "
+		   "waiting to "
+		   "be accepted\n"
+		   "  -h, --help       display this help and exit\n");
 }
 
-bool cli_parse_num(long *result, long min, long max, const char *argv0)
+bool cli_parse_num(long *result, long max, const char *str, const char *arg0)
 {
-	/* Reset errno so that we know if strtol failed. */
-	errno = 0;
+	*result = 0;
 
-	char *tmp;
-	*result = strtol(optarg, &tmp, 10);
+	for (; *str != '\0'; ++str) {
+		if (*str < '0' || *str > '9') {
+			if (!FPUTS_0(2, arg0) ||
+			    !FPUTS_A(2, ": invalid number: ") ||
+			    !FPUTS_0(2, str) || !FPUTS_A(2, "\n"))
+				return false;
 
-	if (errno != 0 || tmp != optarg + strlen(optarg)) {
-		fputs(argv0, stderr);
-		fputs(": invalid number: ", stderr);
-		fputs(optarg, stderr);
-		fputc('\n', stderr);
-		return false;
+			return false;
+		}
+
+		*result *= 10;
+		*result += *str - '0';
+
+		if (*result > max)
+			break;
 	}
 
-	if (*result < min || *result > max) {
-		fputs(argv0, stderr);
-		fputs(": number out of range: ", stderr);
-		fputs(optarg, stderr);
-		fputc('\n', stderr);
+	if (*result > max) {
+		if (!FPUTS_0(2, arg0) ||
+		    !FPUTS_A(2, ": number out of range: ") ||
+		    !FPUTS_0(2, str) || !FPUTS_A(2, "\n"))
+			return false;
+
 		return false;
 	}
 
 	return true;
 }
 
-enum cli_parse_result cli_parse_args(struct cli_options *options, int argc,
-				     char *const *argv)
+enum cli_parse_result cli_parse_args(struct cli_options *options,
+				     const char *const *argv)
 {
-	for (;;) {
-		struct option long_options[] = {
-		    {"port", required_argument, NULL, 'p'},
-		    {"backlog", required_argument, NULL, 'b'},
-		    {"help", no_argument, NULL, 'h'},
-		};
-		char ch = getopt_long(argc, argv, "p:b:h", long_options, NULL);
-		if (ch == -1)
-			break;
+	const char *arg0 = argv[0];
 
-		switch (ch) {
-		case 'p': {
+	/* Arguments start at 1. */
+	++argv;
+
+	for (; *argv != NULL; ++argv) {
+		if (util_strcmp(*argv, "-h") || util_strcmp(*argv, "--help")) {
+			cli_print_usage(0, arg0);
+			return CPR_STOP;
+		} else if (util_strcmp(*argv, "-p") ||
+			   util_strcmp(*argv, "--port")) {
+			if (argv[1] == NULL) {
+				if (!FPUTS_0(2, arg0) ||
+				    !FPUTS_A(
+					2,
+					": missing number for argument '-p'\n"))
+					return false;
+
+				return CPR_ERROR;
+			}
+
 			long tmp;
-			if (!cli_parse_num(&tmp, 0, UINT16_MAX, argv[0]))
+			if (!cli_parse_num(&tmp, UINT16_MAX, argv[1], arg0))
 				return CPR_ERROR;
 			options->server_port = tmp;
-			break;
-		}
-		case 'b': {
+
+			++argv;
+		} else if (util_strcmp(*argv, "-b") ||
+			   util_strcmp(*argv, "--backlog")) {
+			if (argv[1] == NULL) {
+				if (!FPUTS_0(2, arg0) ||
+				    !FPUTS_A(
+					2,
+					": missing number for argument '-b'\n"))
+					return false;
+
+				return CPR_ERROR;
+			}
+
 			long tmp;
-			if (!cli_parse_num(&tmp, 0, INT_MAX, argv[0]))
+			if (!cli_parse_num(&tmp, INT_MAX, argv[1], arg0))
 				return CPR_ERROR;
 			options->socket_backlog = tmp;
+
+			++argv;
+		} else if (util_strcmp(*argv, "--")) {
+			/* Make sure that there is nothing after the double
+			   slash because we do not accept any argument. */
+			if (argv[1] != NULL) {
+				cli_print_usage(2, arg0);
+				return CPR_ERROR;
+			}
+
 			break;
-		}
-		case 'h':
-			cli_print_usage(stdout, argv[0]);
-			return CPR_STOP;
-		case '?':
-			cli_print_usage(stderr, argv[0]);
+		} else {
+			cli_print_usage(2, arg0);
 			return CPR_ERROR;
 		}
 	}

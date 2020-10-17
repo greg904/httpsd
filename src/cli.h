@@ -15,8 +15,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef G9_HTTPS_REDIRECT_CLI_H
-#define G9_HTTPS_REDIRECT_CLI_H
+#ifndef HTTP2SD_CLI_H
+#define HTTP2SD_CLI_H
 
 #include <stdint.h>
 
@@ -31,7 +31,7 @@ enum cli_parse_result {
 	CPR_ERROR,
 };
 
-enum cli_parse_result cli_parse_args(struct cli_options *options, int argc,
-				     char *const *argv);
+enum cli_parse_result cli_parse_args(struct cli_options *options,
+				     const char *const *argv);
 
 #endif

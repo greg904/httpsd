@@ -15,13 +15,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <assert.h>
-#include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
 
 #include "conn.h"
 #include "reqparser.h"
@@ -128,7 +123,6 @@ uint64_t conn_get_timeout(int id) { return connections[id].timeout; }
 
 enum conn_wants_more conn_recv(int id, const char *data, size_t len)
 {
-	assert(conn_is_valid(id));
 	struct conn *c = &connections[id];
 
 	struct reqparser_args args;
@@ -155,7 +149,6 @@ enum conn_wants_more conn_recv(int id, const char *data, size_t len)
 
 enum conn_wants_more conn_send(int id)
 {
-	assert(conn_is_valid(id));
 	struct conn *c = &connections[id];
 
 	/* We can afford to rebuild the whole response on every EPOLLIN
@@ -173,13 +166,13 @@ enum conn_wants_more conn_send(int id)
 		if (remaining == 0)
 			return CWM_NO;
 
-		ssize_t written = write(
+		ssize_t written = sys_write(
 		    c->socket_fd, util_tmp_buf + c->res_bytes_sent, remaining);
-		if (written == -1) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
+		if (written < 0) {
+			if (written == -SYS_EAGAIN)
 				return CWM_YES;
 
-			perror("write()");
+			FPUTS_A(2, "write() failed\n");
 			return CWM_ERROR;
 		}
 		c->res_bytes_sent += written;
@@ -193,20 +186,18 @@ static bool conn_is_valid(int id)
 
 static size_t conn_write_redirect_response(int id, char *buf, size_t capacity)
 {
-	assert(conn_is_valid(id));
 	struct conn *c = &connections[id];
 	char *cursor = buf;
 
 	const char header[] =
 	    "HTTP/1.1 301 Moved Permanently\r\nLocation: https://";
 	size_t header_len = sizeof(header) - 1;
-	assert((cursor + header_len) - buf <= (ptrdiff_t)capacity);
 	memcpy(cursor, header, header_len);
 	cursor += header_len;
 
 	/* Find the index of the NULL character that delimits the request URL
 	   path from the request host. */
-	size_t sep_index = strlen(c->req_fields);
+	size_t sep_index = util_strlen(c->req_fields);
 
 	char *host_start = c->req_fields + sep_index + 1;
 	char *host_end = host_start;
@@ -216,24 +207,16 @@ static size_t conn_write_redirect_response(int id, char *buf, size_t capacity)
 	size_t host_len = host_end - host_start;
 
 	/* URL host */
-	assert((cursor + host_len) - buf <= (ptrdiff_t)capacity);
 	memcpy(cursor, c->req_fields + sep_index + 1, host_len);
 	cursor += host_len;
 
-	/* URL slash */
-	assert((cursor + 1) - buf <= (ptrdiff_t)capacity);
-	*cursor = '/';
-	cursor++;
-
 	/* URL path */
-	assert((cursor + sep_index) - buf <= (ptrdiff_t)capacity);
 	memcpy(cursor, c->req_fields, sep_index);
 	cursor += sep_index;
 
 	const char footer[] =
 	    "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 	size_t footer_len = sizeof(footer) - 1;
-	assert((cursor + footer_len) - buf <= (ptrdiff_t)capacity);
 	memcpy(cursor, footer, footer_len);
 	cursor += footer_len;
 
@@ -247,7 +230,6 @@ static size_t conn_write_too_long_response(char *buf, size_t capacity)
 	    "45\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nThe "
 	    "combined URL host and path is too large!\n";
 	size_t body_len = sizeof(body) - 1;
-	assert(body_len <= capacity);
 	memcpy(buf, body, body_len);
 	return body_len;
 }

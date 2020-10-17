@@ -15,9 +15,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <assert.h>
 #include <stdbool.h>
-#include <string.h>
 
 #include "reqparser.h"
 #include "util.h"
@@ -103,8 +101,6 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 		case RT_HOST:
 			r = reqparser_host(args);
 			break;
-		default:
-			assert(false);
 		}
 
 		switch (r) {

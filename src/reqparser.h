@@ -15,8 +15,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef G9_HTTPS_REDIRECT_PARSER_H
-#define G9_HTTPS_REDIRECT_PARSER_H
+#ifndef HTTP2SD_REQPARSER_H
+#define HTTP2SD_REQPARSER_H
 
 #include <stdint.h>
 #include <stdlib.h>
