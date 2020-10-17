@@ -121,7 +121,7 @@ enum cli_parse_result cli_parse_args(struct cli_options *options,
 			++argv;
 		} else if (util_strcmp(*argv, "--")) {
 			/* Make sure that there is nothing after the double
-			   slash because we do not accept any argument. */
+			   hyphen because we do not accept any argument. */
 			if (argv[1] != NULL) {
 				cli_print_usage(2, arg0);
 				return CPR_ERROR;
