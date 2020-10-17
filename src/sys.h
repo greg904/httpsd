@@ -76,7 +76,7 @@ typedef union sys_epoll_data {
 struct sys_epoll_event {
 	int events;
 	sys_epoll_data_t data;
-};
+} __attribute__((packed));
 
 typedef int sys_clockid_t;
 
