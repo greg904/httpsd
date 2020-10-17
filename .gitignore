@@ -1,0 +1,3 @@
+# Builds files
+*.o
+/http2sd

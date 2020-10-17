@@ -1,11 +1,10 @@
 [Unit]
 Description=A simple HTTP 1.1 server that redirects clients to HTTPS URLs
-Documentation=https://github.com/greg904/http2s
 After=network.target
 
 [Service]
 Type=exec
-ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/http2s
+ExecStart=/usr/bin/http2sd
 DynamicUser=yes
 LockPersonality=yes
 LimitNPROC=1

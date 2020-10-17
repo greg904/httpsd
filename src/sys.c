@@ -125,7 +125,7 @@ static uint64_t sys_4(uint64_t num, uint64_t a, uint64_t b, uint64_t c,
 	uint64_t ret;
 	asm volatile("syscall"
 		     : "=a"(ret)
-		     : "0"(num), "D"(a), "S"(b), "d"(c)
+		     : "0"(num), "D"(a), "S"(b), "d"(c), "r"(r10)
 		     : "rcx", "r11", "memory");
 	return ret;
 }
