@@ -42,8 +42,9 @@ __attribute__((noreturn)) void main(const char *const *argv)
 		sys_exit(1);
 	}
 
-	int server_fd =
-	    sys_socket(SYS_AF_INET, SYS_SOCK_STREAM | SYS_SOCK_CLOEXEC | SYS_SOCK_NONBLOCK, 0);
+	int server_fd = sys_socket(
+	    SYS_AF_INET, SYS_SOCK_STREAM | SYS_SOCK_CLOEXEC | SYS_SOCK_NONBLOCK,
+	    0);
 	if (server_fd < 0) {
 		FPUTS_A(2, "socket() failed\n");
 		sys_exit(1);

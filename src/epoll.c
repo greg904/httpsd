@@ -108,7 +108,7 @@ static bool epoll_on_event(const struct sys_epoll_event *event)
 		if (!epoll_on_server_in())
 			return false;
 	} else {
-		int conn_id = event->data.u64 - 1;
+		int conn_id = (int)(event->data.u64 - 1);
 
 		if (rdhup || err) {
 			/* We haven't finished handling this request but there
@@ -136,8 +136,9 @@ static bool epoll_on_server_in()
 	/* The server socket is ready to accept one or more connection(s). */
 
 	while (!conn_is_full()) {
-		int client_fd = sys_accept4(epoll_server_socket_fd, NULL, NULL,
-					    SYS_SOCK_CLOEXEC | SYS_SOCK_NONBLOCK);
+		int client_fd =
+		    sys_accept4(epoll_server_socket_fd, NULL, NULL,
+				SYS_SOCK_CLOEXEC | SYS_SOCK_NONBLOCK);
 		if (client_fd < 0) {
 			if (client_fd == -SYS_EAGAIN) {
 				/* We have already accepted all connections. */
@@ -149,12 +150,6 @@ static bool epoll_on_server_in()
 		}
 
 		int conn_id = conn_new(client_fd);
-		if (conn_id == -1) {
-			/* This should never happen because of the conn_is_full
-			   check. */
-			sys_close(client_fd);
-			continue;
-		}
 
 		/* Setup the timeout */
 		struct sys_timespec now;
@@ -171,7 +166,8 @@ static bool epoll_on_server_in()
 		/* For now, we only care about reading the request. Later, when
 		   we want to know when we can write to the socket to respond to
 		   the request, we will call epoll_ctl to modify the events. */
-		client_epoll_event.events = SYS_EPOLLIN | SYS_EPOLLET | SYS_EPOLLWAKEUP;
+		client_epoll_event.events =
+		    SYS_EPOLLIN | SYS_EPOLLET | SYS_EPOLLWAKEUP;
 
 		if (sys_epoll_ctl(epoll_fd, SYS_EPOLL_CTL_ADD, client_fd,
 				  &client_epoll_event) != 0) {
@@ -223,8 +219,9 @@ static bool epoll_on_conn_in(int conn_id)
 				new_client_epoll.data.u64 = conn_id + 1;
 				/* We need to wait until we can write to the
 				   socket again. */
-				new_client_epoll.events =
-				    SYS_EPOLLOUT | SYS_EPOLLET | SYS_EPOLLWAKEUP;
+				new_client_epoll.events = SYS_EPOLLOUT |
+							  SYS_EPOLLET |
+							  SYS_EPOLLWAKEUP;
 				if (sys_epoll_ctl(epoll_fd, SYS_EPOLL_CTL_MOD,
 						  socket_fd,
 						  &new_client_epoll) != 0) {

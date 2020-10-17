@@ -33,10 +33,7 @@ sys_ssize_t sys_write(int fd, const void *buf, size_t count)
 	return (sys_ssize_t)sys_3(1, fd, (uint64_t)buf, count);
 }
 
-int sys_close(int fd)
-{
-	return (int)sys_1(3, fd);
-}
+int sys_close(int fd) { return (int)sys_1(3, fd); }
 
 __attribute__((noreturn)) void sys_exit(int code)
 {
@@ -54,21 +51,16 @@ int sys_bind(int fd, struct sys_sockaddr *addr, size_t addr_len)
 	return (int)sys_3(49, fd, (uint64_t)addr, addr_len);
 }
 
-int sys_listen(int fd, int backlog)
-{
-	return (int)sys_2(50, fd, backlog);
-}
+int sys_listen(int fd, int backlog) { return (int)sys_2(50, fd, backlog); }
 
 int sys_accept4(int fd, struct sys_sockaddr *peer_addr, int *peer_addr_len,
 		int flags)
 {
-	return (int)sys_4(288, fd, (uint64_t)peer_addr, (uint64_t)peer_addr_len, flags);
+	return (int)sys_4(288, fd, (uint64_t)peer_addr, (uint64_t)peer_addr_len,
+			  flags);
 }
 
-int sys_epoll_create1(int flags)
-{
-	return (int)sys_1(291, flags);
-}
+int sys_epoll_create1(int flags) { return (int)sys_1(291, flags); }
 
 int sys_epoll_ctl(int epoll_fd, int op, int fd, struct sys_epoll_event *event)
 {
