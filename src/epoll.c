@@ -52,7 +52,7 @@ bool epoll_init(int server_socket_fd)
 	server_epoll_event.data.u64 = 0;
 	/* We want to be notified when the server socket is ready to accept a
 	   client socket. */
-	server_epoll_event.events = SYS_EPOLLIN | SYS_EPOLLET | SYS_EPOLLWAKEUP;
+	server_epoll_event.events = SYS_EPOLLIN | SYS_EPOLLWAKEUP;
 
 	if (sys_epoll_ctl(epoll_fd, SYS_EPOLL_CTL_ADD, epoll_server_socket_fd,
 			  &server_epoll_event) != 0) {
@@ -135,7 +135,7 @@ static bool epoll_on_server_in()
 {
 	/* The server socket is ready to accept one or more connection(s). */
 
-	for (;;) {
+	while (!conn_is_full()) {
 		int client_fd = sys_accept4(epoll_server_socket_fd, NULL, NULL,
 					    SYS_SOCK_CLOEXEC | SYS_SOCK_NONBLOCK);
 		if (client_fd < 0) {
@@ -150,7 +150,8 @@ static bool epoll_on_server_in()
 
 		int conn_id = conn_new(client_fd);
 		if (conn_id == -1) {
-			/* Too many clients right now, sorry! */
+			/* This should never happen because of the conn_is_full
+			   check. */
 			sys_close(client_fd);
 			continue;
 		}

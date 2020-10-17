@@ -18,8 +18,15 @@
 #ifndef HTTP2SD_CONN_H
 #define HTTP2SD_CONN_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+/**
+ * Returns true if the list of connections is full, and therefore future calls
+ * to conn_new will return -1.
+ */
+bool conn_is_full();
 
 /**
  * Creates a new connection info object to accompany a socket connection and

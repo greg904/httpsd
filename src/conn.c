@@ -80,6 +80,16 @@ static bool conn_is_valid(int id);
 static size_t conn_write_redirect_response(int id, char *buf, size_t capacity);
 static size_t conn_write_too_long_response(char *buf, size_t capacity);
 
+bool conn_is_full()
+{
+	for (int id = 0; id < MAX_CONN_COUNT; id++) {
+		if (!conn_is_valid(id))
+			return false;
+	}
+
+	return true;
+}
+
 int conn_new(int socket_fd)
 {
 	for (int id = 0; id < MAX_CONN_COUNT; id++) {
@@ -90,6 +100,7 @@ int conn_new(int socket_fd)
 		connections[id].socket_fd = socket_fd;
 		return id;
 	}
+
 	return -1;
 }
 
