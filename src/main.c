@@ -20,12 +20,6 @@
 #include "sys.h"
 #include "util.h"
 
-asm(".global _start\n"
-    "_start:\n"
-    "xorl %ebp, %ebp\n"	  /* This is the outermost stack frame. */
-    "lea 8(%rsp), %rdi\n" /* Put argv in first argument. */
-    "call main\n");
-
 __attribute__((noreturn)) void main(const char *const *argv)
 {
 	struct cli_options options;

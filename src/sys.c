@@ -17,6 +17,13 @@
 
 #include "sys.h"
 
+/* The actual entry point that calls main. */
+asm(".global _start\n"
+    "_start:\n"
+    "xorl %ebp, %ebp\n"	  /* This is the outermost stack frame. */
+    "lea 8(%rsp), %rdi\n" /* Put argv in first argument. */
+    "call main\n");
+
 static uint64_t sys_1(uint64_t num, uint64_t a);
 static uint64_t sys_2(uint64_t num, uint64_t a, uint64_t b);
 static uint64_t sys_3(uint64_t num, uint64_t a, uint64_t b, uint64_t c);
