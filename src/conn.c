@@ -24,7 +24,7 @@
 
 /* If this becomes greater than 32, then the uint32_t type that is used
    throughout the code needs to be changed. */
-#define MAX_CONN_COUNT 28
+#define MAX_CONN_COUNT 27
 
 /**
  * Custom reqparser_state for RC_BUFFER_TOO_SMALL error, so that we don't need
