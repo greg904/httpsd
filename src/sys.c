@@ -36,7 +36,7 @@ asm(".global _start\n"
     "_start:\n"
     "xorl %ebp, %ebp\n" /* This is the outermost stack frame. */
     "movq %rsp, %rdi\n" /* Put argv in first argument. */
-    "jmpq sys_main_amd64\n");
+    "call sys_main_amd64\n");
 
 noreturn void sys_main_amd64(void *stack)
 {

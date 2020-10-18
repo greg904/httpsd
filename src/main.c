@@ -76,9 +76,12 @@ noreturn void my_main(const char *const *argv)
 
 static void create_more_threads(uint32_t count)
 {
+	if (count == 0)
+		return;
+
 	pid_t children[254];
 
-	ASSERT(count - 1 < sizeof(children) / sizeof(*children));
+	ASSERT(count <= sizeof(children) / sizeof(*children));
 
 	for (uint32_t i = 0; i < count; ++i) {
 		pid_t child =

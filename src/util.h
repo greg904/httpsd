@@ -34,7 +34,7 @@
 #define FPUTS_A(fd, str) util_fputs(fd, str, sizeof(str) - 1)
 
 #define ASSERT(check)                                                          \
-	if (!(check)) {                                                        \
+	if (__builtin_expect(!(check), false)) {                               \
 		FPUTS_A(2, "Assertion failed at ") && FPUTS_A(2, __FILE__) &&  \
 		    FPUTS_A(2, ":" STR_LINE ".\n");                            \
 		sys_exit(1);                                                   \
