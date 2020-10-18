@@ -10,11 +10,11 @@ object_files := libs/parse_vdso.o \
 base_flags := -std=gnu11 -ffreestanding -nostdlib -fno-stack-protector -static
 
 CC := clang
-CCFLAGS := -flto -fPIC -O3 -Wall -Wextra -Werror
+CCFLAGS := -flto -fPIC -O2 -Wall -Wextra -Werror
 CCFLAGS := ${CCFLAGS} ${base_flags}
 
 LD := ${CC}
-LDFLAGS := -flto -fPIC -O3 -fuse-ld=lld
+LDFLAGS := -flto -fPIC -O2 -fuse-ld=lld
 LDFLAGS := ${LDFLAGS} ${base_flags}
 
 .PHONY: all
