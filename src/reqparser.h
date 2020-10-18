@@ -18,8 +18,8 @@
 #ifndef HTTP2SD_REQPARSER_H
 #define HTTP2SD_REQPARSER_H
 
+#include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 struct reqparser_args {
 	uint8_t state;

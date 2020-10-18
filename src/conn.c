@@ -156,6 +156,10 @@ enum conn_wants_more conn_recv(int id, const char *data, size_t len)
 		c->reqparser_state = REQPARSER_CUSTOM_ERR;
 		return CWM_NO;
 	}
+
+	/* We should never get here. */
+	ASSERT(false);
+	return CWM_ERROR;
 }
 
 enum conn_wants_more conn_send(int id)
@@ -180,7 +184,7 @@ enum conn_wants_more conn_send(int id)
 		ssize_t written = sys_write(
 		    c->socket_fd, util_tmp_buf + c->res_bytes_sent, remaining);
 		if (written < 0) {
-			if (written == -SYS_EAGAIN)
+			if (written == -EAGAIN)
 				return CWM_YES;
 
 			FPUTS_A(2, "write() failed\n");
@@ -209,7 +213,7 @@ static size_t conn_write_redirect_response(int id, char *buf, size_t capacity)
 
 	/* Find the index of the NULL character that delimits the request URL
 	   path from the request host. */
-	size_t sep_index = util_strlen(c->req_fields);
+	size_t sep_index = strlen(c->req_fields);
 
 	char *host_start = c->req_fields + sep_index + 1;
 	char *host_end = host_start;

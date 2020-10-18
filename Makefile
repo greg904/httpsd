@@ -1,4 +1,5 @@
-object_files := src/cli.o \
+object_files := libs/parse_vdso.o \
+	src/cli.o \
 	src/conn.o \
 	src/epoll.o \
 	src/main.o \
@@ -6,11 +7,15 @@ object_files := src/cli.o \
 	src/sys.o \
 	src/util.o
 
+base_flags := -ffreestanding -nostdlib -fno-stack-protector -static
+
 CC := clang
-CCFLAGS := -ffreestanding -nostdlib -fno-stack-protector -flto -static -O3
+CCFLAGS := -flto -fpic -O3 -Wall -Wextra -Werror
+CCFLAGS := ${CCFLAGS} ${base_flags}
 
 LD := ${CC}
-LDFLAGS := ${CCFLAGS} -fuse-ld=lld 
+LDFLAGS := -flto -fpic -O3 -fuse-ld=lld
+LDFLAGS := ${LDFLAGS} ${base_flags}
 
 .PHONY: all
 all: http2sd
@@ -19,10 +24,12 @@ all: http2sd
 clean:
 	rm -f ${object_files} http2sd
 
+.PHONY: format
+format:
+	clang-format -i src/*.c src/*.h
+
 %.o: %.c
 	${CC} $^ -c -o $@ ${CCFLAGS}
 
 http2sd: ${object_files}
 	${LD} $^ -o $@ ${LDFLAGS}
-	strip --strip-all $@
-	objcopy --remove-section .comment $@

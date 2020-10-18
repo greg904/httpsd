@@ -15,12 +15,14 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <stdnoreturn.h>
+
 #include "cli.h"
 #include "epoll.h"
 #include "sys.h"
 #include "util.h"
 
-__attribute__((noreturn)) void main(const char *const *argv)
+noreturn void main(const char *const *argv)
 {
 	struct cli_options options;
 	options.server_port = 80;
@@ -36,21 +38,19 @@ __attribute__((noreturn)) void main(const char *const *argv)
 		sys_exit(1);
 	}
 
-	int server_fd = sys_socket(
-	    SYS_AF_INET, SYS_SOCK_STREAM | SYS_SOCK_CLOEXEC | SYS_SOCK_NONBLOCK,
-	    0);
+	int server_fd =
+	    sys_socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if (server_fd < 0) {
 		FPUTS_A(2, "socket() failed\n");
 		sys_exit(1);
 	}
 
-	struct sys_sockaddr_in addr;
-	addr.sin_addr = SYS_INADDR_ANY;
-	addr.sin_family = SYS_AF_INET;
-	addr.sin_port = util_htob16(options.server_port);
+	struct sockaddr_in addr;
+	addr.sin_addr = INADDR_ANY;
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(options.server_port);
 
-	if (sys_bind(server_fd, (struct sys_sockaddr *)&addr, sizeof(addr)) !=
-	    0) {
+	if (sys_bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
 		FPUTS_A(2, "bind() failed\n");
 		sys_exit(1);
 	}

@@ -15,26 +15,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "util.h"
+#ifndef PARSE_VDSO_H
+#define PARSE_VDSO_H
 
-char util_tmp_buf[512];
+#include <stdint.h>
 
-bool util_fputs(int fd, const char *str, size_t len)
-{
-	return sys_write(fd, str, len) == (ssize_t)len;
-}
+void vdso_init_from_sysinfo_ehdr(uintptr_t base);
+void *vdso_sym(const char *version, const char *name);
+void vdso_init_from_auxv(void *auxv);
 
-void util_reverse(char *start, char *end)
-{
-	ASSERT(end >= start);
-
-	while (start < end) {
-		/* Swap bytes. */
-		char tmp = *start;
-		*start = *end;
-		*end = tmp;
-
-		start++;
-		end--;
-	}
-}
+#endif

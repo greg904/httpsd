@@ -105,6 +105,7 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 			break;
 		default:
 			ASSERT(false);
+			return PC_BAD_DATA;
 		}
 
 		switch (r) {
@@ -121,6 +122,7 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 			return PC_BUFFER_TOO_SMALL;
 		default:
 			ASSERT(false);
+			return PC_BAD_DATA;
 		}
 	}
 }
@@ -239,8 +241,8 @@ static enum reqparser_sub reqparser_header_name(struct reqparser_args *args)
 		/* Check if it's not the Host header, in which case we can just
 		   skip the entire line. */
 		ASSERT(args->state >= RT_HEADER_NAME_0 &&
-		       args->state - RT_HEADER_NAME_0 <
-			   (sizeof(host_str) - 1) / sizeof(char));
+		       (ssize_t)(args->state - RT_HEADER_NAME_0) <
+			   (ssize_t)((sizeof(host_str) - 1) / sizeof(char)));
 		if (*args->data != host_str[args->state - RT_HEADER_NAME_0]) {
 			args->state = RT_SKIP_LINE;
 
@@ -311,7 +313,7 @@ static void reqparser_fix_req_fields(struct reqparser_args *args,
 	util_reverse(args->req_fields + old_host_index,
 		     args->req_fields + (args->req_fields_len - 1));
 
-	size_t sep_index = util_strlen(args->req_fields);
+	size_t sep_index = strlen(args->req_fields);
 	ASSERT(sep_index <= args->req_fields_len - 1);
 
 	size_t host_len = args->req_fields_len - old_host_index;

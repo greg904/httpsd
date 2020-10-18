@@ -80,11 +80,11 @@ enum cli_parse_result cli_parse_args(struct cli_options *options,
 	++argv;
 
 	for (; *argv != NULL; ++argv) {
-		if (util_strcmp(*argv, "-h") || util_strcmp(*argv, "--help")) {
+		if (strcmp(*argv, "-h") == 0 || strcmp(*argv, "--help") == 0) {
 			cli_print_usage(0, arg0);
 			return CPR_STOP;
-		} else if (util_strcmp(*argv, "-p") ||
-			   util_strcmp(*argv, "--port")) {
+		} else if (strcmp(*argv, "-p") == 0 ||
+			   strcmp(*argv, "--port") == 0) {
 			if (argv[1] == NULL) {
 				if (!FPUTS_0(2, arg0) ||
 				    !FPUTS_A(
@@ -101,8 +101,8 @@ enum cli_parse_result cli_parse_args(struct cli_options *options,
 			options->server_port = tmp;
 
 			++argv;
-		} else if (util_strcmp(*argv, "-b") ||
-			   util_strcmp(*argv, "--backlog")) {
+		} else if (strcmp(*argv, "-b") == 0 ||
+			   strcmp(*argv, "--backlog") == 0) {
 			if (argv[1] == NULL) {
 				if (!FPUTS_0(2, arg0) ||
 				    !FPUTS_A(
@@ -119,7 +119,7 @@ enum cli_parse_result cli_parse_args(struct cli_options *options,
 			options->socket_backlog = tmp;
 
 			++argv;
-		} else if (util_strcmp(*argv, "--")) {
+		} else if (strcmp(*argv, "--") == 0) {
 			/* Make sure that there is nothing after the double
 			   hyphen because we do not accept any argument. */
 			if (argv[1] != NULL) {
