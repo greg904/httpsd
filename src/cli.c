@@ -22,54 +22,10 @@
 #include "sys.h"
 #include "util.h"
 
-bool cli_print_usage(int fd, const char *arg0)
-{
-	return FPUTS_A(fd, "Usage: ") && FPUTS_0(fd, arg0) &&
-	       FPUTS_A(
-		   fd,
-		   " [OPTION]...\nStarts an HTTP server that redirects "
-		   "requests to "
-		   "the same URL but with the HTTPS scheme instead, and drops "
-		   "invalid requests.\n\n"
-		   "  -p, --port=PORT  set port to start listening on\n"
-		   "  -b, --backlog    set maximum amount of connections "
-		   "waiting to "
-		   "be accepted\n"
-		   "  -h, --help       display this help and exit\n");
-}
-
-bool cli_parse_num(long *result, long max, const char *str, const char *arg0)
-{
-	*result = 0;
-
-	for (; *str != '\0'; ++str) {
-		if (*str < '0' || *str > '9') {
-			if (!FPUTS_0(2, arg0) ||
-			    !FPUTS_A(2, ": invalid number: ") ||
-			    !FPUTS_0(2, str) || !FPUTS_A(2, "\n"))
-				return false;
-
-			return false;
-		}
-
-		*result *= 10;
-		*result += *str - '0';
-
-		if (*result > max)
-			break;
-	}
-
-	if (*result > max) {
-		if (!FPUTS_0(2, arg0) ||
-		    !FPUTS_A(2, ": number out of range: ") ||
-		    !FPUTS_0(2, str) || !FPUTS_A(2, "\n"))
-			return false;
-
-		return false;
-	}
-
-	return true;
-}
+static bool cli_print_usage(int fd, const char *arg0);
+static void cli_print_arg_out_of_range(const char *arg, const char *arg0);
+static bool cli_parse_num(uint32_t *result, uint32_t min, uint32_t max,
+			  const char *arg, const char *arg0);
 
 enum cli_parse_result cli_parse_args(struct cli_options *options,
 				     const char *const *argv)
@@ -85,39 +41,21 @@ enum cli_parse_result cli_parse_args(struct cli_options *options,
 			return CPR_STOP;
 		} else if (strcmp(*argv, "-p") == 0 ||
 			   strcmp(*argv, "--port") == 0) {
-			if (argv[1] == NULL) {
-				if (!FPUTS_0(2, arg0) ||
-				    !FPUTS_A(
-					2,
-					": missing number for argument '-p'\n"))
-					return false;
-
+			if (!cli_parse_num(&options->server_port, 0, UINT16_MAX,
+					   argv[1], arg0))
 				return CPR_ERROR;
-			}
-
-			long tmp;
-			if (!cli_parse_num(&tmp, UINT16_MAX, argv[1], arg0))
+			++argv;
+		} else if (strcmp(*argv, "-t") == 0 ||
+			   strcmp(*argv, "--threads") == 0) {
+			if (!cli_parse_num(&options->threads, 1, 256, argv[1],
+					   arg0))
 				return CPR_ERROR;
-			options->server_port = tmp;
-
 			++argv;
 		} else if (strcmp(*argv, "-b") == 0 ||
 			   strcmp(*argv, "--backlog") == 0) {
-			if (argv[1] == NULL) {
-				if (!FPUTS_0(2, arg0) ||
-				    !FPUTS_A(
-					2,
-					": missing number for argument '-b'\n"))
-					return false;
-
+			if (!cli_parse_num(&options->socket_backlog, 1, INT_MAX,
+					   argv[1], arg0))
 				return CPR_ERROR;
-			}
-
-			long tmp;
-			if (!cli_parse_num(&tmp, INT_MAX, argv[1], arg0))
-				return CPR_ERROR;
-			options->socket_backlog = tmp;
-
 			++argv;
 		} else if (strcmp(*argv, "--") == 0) {
 			/* Make sure that there is nothing after the double
@@ -135,4 +73,74 @@ enum cli_parse_result cli_parse_args(struct cli_options *options,
 	}
 
 	return CPR_SUCCESS;
+}
+
+static bool cli_print_usage(int fd, const char *arg0)
+{
+	return FPUTS_A(fd, "Usage: ") && FPUTS_0(fd, arg0) &&
+	       FPUTS_A(
+		   fd,
+		   " [OPTION]...\nStarts an HTTP server that redirects "
+		   "requests to "
+		   "the same URL but with the HTTPS scheme instead, and drops "
+		   "invalid requests.\n\n"
+		   "  -p, --port=PORT       set port to start listening on\n"
+		   "  -t, --threads=THREADS set amount of threads to use to "
+		   "handle requests\n"
+		   "  -b, --backlog=BACKLOG set maximum amount of connections "
+		   "waiting to "
+		   "be accepted\n"
+		   "  -h, --help       display this help and exit\n");
+}
+
+static void cli_print_arg_out_of_range(const char *arg, const char *arg0)
+{
+	if (!FPUTS_0(2, arg0))
+		return;
+	if (!FPUTS_A(2, ": number out of range: "))
+		return;
+	if (!FPUTS_0(2, arg))
+		return;
+	FPUTS_A(2, "\n");
+}
+
+static bool cli_parse_num(uint32_t *result, uint32_t min, uint32_t max,
+			  const char *arg, const char *arg0)
+{
+	if (arg == NULL) {
+		if (!FPUTS_0(2, arg0) ||
+		    !FPUTS_A(2, ": missing number for argument\n"))
+			return false;
+
+		return false;
+	}
+
+	*result = 0;
+
+	for (; *arg != '\0'; ++arg) {
+		if (*arg < '0' || *arg > '9') {
+			if (!FPUTS_0(2, arg0) ||
+			    !FPUTS_A(2, ": invalid number: ") ||
+			    !FPUTS_0(2, arg) || !FPUTS_A(2, "\n"))
+				return false;
+
+			return false;
+		}
+
+		uint32_t to_add = *arg - '0';
+		if (*result >= (max - to_add) / 10) {
+			cli_print_arg_out_of_range(arg, arg0);
+			return false;
+		}
+
+		*result *= 10;
+		*result += to_add;
+	}
+
+	if (*result < min) {
+		cli_print_arg_out_of_range(arg, arg0);
+		return false;
+	}
+
+	return true;
 }

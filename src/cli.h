@@ -21,8 +21,9 @@
 #include <stdint.h>
 
 struct cli_options {
-	uint16_t server_port;
-	int socket_backlog;
+	uint32_t server_port;
+	uint32_t threads;
+	uint32_t socket_backlog;
 };
 
 enum cli_parse_result {

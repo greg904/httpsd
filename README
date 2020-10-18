@@ -1,5 +1,2 @@
 A simple HTTP 1.1 server that redirects requests to the same URL but with the
 HTTPS scheme instead, and drops invalid requests.
-
-It can only handle a few connections at a time, and it doesn't rate limit
-clients which means that it is easily susceptible to DoS attacks.

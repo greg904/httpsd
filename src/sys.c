@@ -63,6 +63,8 @@ static uint64_t sys_2(uint64_t num, uint64_t a, uint64_t b);
 static uint64_t sys_3(uint64_t num, uint64_t a, uint64_t b, uint64_t c);
 static uint64_t sys_4(uint64_t num, uint64_t a, uint64_t b, uint64_t c,
 		      uint64_t d);
+static uint64_t sys_5(uint64_t num, uint64_t a, uint64_t b, uint64_t c,
+		      uint64_t d, uint64_t e);
 #else
 #	error Only the amd64 architecture is supported for now!
 #endif
@@ -84,6 +86,18 @@ noreturn void sys_exit(int code)
 	sys_1(60, code);
 	for (;;) {
 	}
+}
+
+pid_t sys_clone(unsigned long flags, void *stack, int *parent_tid,
+		int *child_tid, unsigned long tls)
+{
+	return (long)sys_5(56, flags, (uint64_t)stack, (uint64_t)parent_tid,
+			   (uint64_t)child_tid, tls);
+}
+
+int sys_kill(pid_t pid, int signal)
+{
+	return (int)sys_2(62, pid, signal);
 }
 
 int sys_socket(int family, int type, int protocol)
@@ -251,12 +265,26 @@ static uint64_t sys_3(uint64_t num, uint64_t a, uint64_t b, uint64_t c)
 static uint64_t sys_4(uint64_t num, uint64_t a, uint64_t b, uint64_t c,
 		      uint64_t d)
 {
-	register long r10 asm("r10") = d;
+	register uint64_t r10 asm("r10") = d;
 
 	uint64_t ret;
 	asm volatile("syscall"
 		     : "=a"(ret)
 		     : "0"(num), "D"(a), "S"(b), "d"(c), "r"(r10)
+		     : "rcx", "r11", "memory");
+	return ret;
+}
+
+static uint64_t sys_5(uint64_t num, uint64_t a, uint64_t b, uint64_t c,
+		      uint64_t d, uint64_t e)
+{
+	register uint64_t r8 asm("r8") = e;
+	register uint64_t r10 asm("r10") = d;
+
+	uint64_t ret;
+	asm volatile("syscall"
+		     : "=a"(ret)
+		     : "0"(num), "D"(a), "S"(b), "d"(c), "r"(r10), "r"(r8)
 		     : "rcx", "r11", "memory");
 	return ret;
 }

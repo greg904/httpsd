@@ -25,16 +25,22 @@
 
 static int epoll_fd;
 static int epoll_server_socket_fd;
+static bool epoll_server_was_unregistered = false;
 
 static uint64_t epoll_now;
 static int epoll_max_sleep;
 
 struct epoll_event epoll_event_buffer[32];
 
+static bool epoll_register_server();
+static bool epoll_unregister_server();
+
 static bool epoll_on_event(const struct epoll_event *event);
 static bool epoll_on_server_in();
 static bool epoll_on_conn_in(int conn_id);
 static bool epoll_on_conn_out(int conn_id);
+
+static bool epoll_end_conn(int conn_id);
 
 static void epoll_timeout_helper(int conn_id);
 
@@ -48,19 +54,7 @@ bool epoll_init(int server_socket_fd)
 		return false;
 	}
 
-	struct epoll_event server_epoll_event;
-	server_epoll_event.data.u64 = 0;
-	/* We want to be notified when the server socket is ready to accept a
-	   client socket. */
-	server_epoll_event.events = EPOLLIN | EPOLLWAKEUP;
-
-	if (sys_epoll_ctl(epoll_fd, EPOLL_CTL_ADD, epoll_server_socket_fd,
-			  &server_epoll_event) != 0) {
-		FPUTS_A(2, "epoll_ctl() failed\n");
-		return false;
-	}
-
-	return true;
+	return epoll_register_server();
 }
 
 bool epoll_wait_and_dispatch()
@@ -93,6 +87,35 @@ bool epoll_wait_and_dispatch()
 		if (!epoll_on_event(&epoll_event_buffer[i]))
 			return false;
 	}
+
+	return true;
+}
+
+static bool epoll_register_server()
+{
+	struct epoll_event server_epoll_event;
+	server_epoll_event.data.u64 = 0;
+	/* We want to be notified when the server socket is ready to accept a
+	   client socket. */
+	server_epoll_event.events = EPOLLIN | EPOLLEXCLUSIVE | EPOLLWAKEUP;
+
+	if (sys_epoll_ctl(epoll_fd, EPOLL_CTL_ADD, epoll_server_socket_fd,
+			  &server_epoll_event) != 0) {
+		FPUTS_A(2, "epoll_ctl() failed\n");
+		return false;
+	}
+	epoll_server_was_unregistered = false;
+
+	return true;
+}
+
+static bool epoll_unregister_server()
+{
+	if (sys_epoll_ctl(epoll_fd, EPOLL_CTL_DEL, epoll_server_socket_fd, NULL) != 0) {
+		FPUTS_A(2, "epoll_ctl() failed");
+		return false;
+	}
+	epoll_server_was_unregistered = true;
 
 	return true;
 }
@@ -152,7 +175,7 @@ static bool epoll_on_server_in()
 		if (client_fd < 0) {
 			if (client_fd == -EAGAIN) {
 				/* We have already accepted all connections. */
-				break;
+				return true;
 			}
 
 			FPUTS_A(2, "accept() failed\n");
@@ -179,7 +202,8 @@ static bool epoll_on_server_in()
 		/* For now, we only care about reading the request. Later, when
 		   we want to know when we can write to the socket to respond to
 		   the request, we will call epoll_ctl to modify the events. */
-		client_epoll_event.events = EPOLLIN | EPOLLET | EPOLLWAKEUP;
+		client_epoll_event.events =
+		    EPOLLIN | EPOLLET | EPOLLWAKEUP;
 
 		if (sys_epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd,
 				  &client_epoll_event) != 0) {
@@ -188,7 +212,9 @@ static bool epoll_on_server_in()
 		}
 	}
 
-	return true;
+	/* Stop listening for incoming connections until the connections
+	   array is not full anymore. */
+	return epoll_unregister_server();
 }
 
 static bool epoll_on_conn_in(int conn_id)
@@ -243,9 +269,7 @@ static bool epoll_on_conn_in(int conn_id)
 			}
 			case CWM_NO:
 				/* We're already done! */
-				sys_close(socket_fd);
-				conn_free(conn_id);
-				return true;
+				return epoll_end_conn(conn_id);
 			case CWM_ERROR:
 				return false;
 			}
@@ -256,9 +280,7 @@ static bool epoll_on_conn_in(int conn_id)
 		case CWM_ERROR:
 			/* The socket FD will be removed from the epoll when it
 			   is closed. */
-			sys_close(socket_fd);
-			conn_free(conn_id);
-			return true;
+			return epoll_end_conn(conn_id);
 		}
 	}
 
@@ -272,9 +294,7 @@ static bool epoll_on_conn_out(int conn_id)
 		return true;
 	case CWM_NO:
 		/* We're done. */
-		sys_close(conn_get_socket_fd(conn_id));
-		conn_free(conn_id);
-		return true;
+		return epoll_end_conn(conn_id);
 	case CWM_ERROR:
 		return false;
 	}
@@ -284,14 +304,29 @@ static bool epoll_on_conn_out(int conn_id)
 	return false;
 }
 
+static bool epoll_end_conn(int conn_id)
+{
+	ASSERT(sys_close(conn_get_socket_fd(conn_id)) == 0);
+	conn_free(conn_id);
+
+	if (epoll_server_was_unregistered) {
+		ASSERT(!conn_is_full());
+
+		/* Now, we have new space, so re-register the server socket. */
+		if (!epoll_register_server())
+			return false;
+	}
+
+	return true;
+}
+
 static void epoll_timeout_helper(int conn_id)
 {
 	uint64_t conn_timeout = conn_get_timeout(conn_id);
 
 	if (epoll_now >= conn_timeout) {
-		sys_close(conn_get_socket_fd(conn_id));
-		conn_free(conn_id);
-		return;
+		if (!epoll_end_conn(conn_id))
+			sys_exit(1);
 	}
 
 	if (conn_timeout - epoll_now > INT_MAX)

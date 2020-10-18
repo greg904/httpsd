@@ -29,6 +29,15 @@
 
 #define EAGAIN 11
 
+/* For clone. */
+#define CLONE_FS 0x00000200
+#define CLONE_FILES 0x00000400
+#define CLONE_PARENT 0x00008000
+#define CLONE_IO 0x80000000
+
+/* For kill. */
+#define SIGKILL 9
+
 /* For socket and bind. */
 #define AF_INET 2
 #define INADDR_ANY 0x00000000
@@ -53,8 +62,9 @@
 #define EPOLLOUT 0x00000004
 #define EPOLLERR 0x00000008
 #define EPOLLRDHUP 0x00002000
-#define EPOLLET (1U << 31)
+#define EPOLLEXCLUSIVE (1U << 28)
 #define EPOLLWAKEUP (1U << 29)
+#define EPOLLET (1U << 31)
 
 /* For clock_gettime. */
 #define CLOCK_MONOTONIC 1
@@ -104,10 +114,17 @@ struct timespec {
 	long tv_nsec;
 };
 
+/* For clone. */
+typedef int pid_t;
+
 ssize_t sys_read(int fd, void *buf, size_t count);
 ssize_t sys_write(int fd, const void *buf, size_t count);
 int sys_close(int fd);
 noreturn void sys_exit(int code);
+
+pid_t sys_clone(unsigned long flags, void *stack, int *parent_tid,
+		int *child_tid, unsigned long tls);
+int sys_kill(pid_t pid, int signal);
 
 int sys_socket(int family, int type, int protocol);
 int sys_bind(int fd, struct sockaddr *addr, size_t addr_len);

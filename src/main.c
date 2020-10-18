@@ -26,6 +26,7 @@ noreturn void main(const char *const *argv)
 {
 	struct cli_options options;
 	options.server_port = 80;
+	options.threads = 1;
 	options.socket_backlog = 32;
 
 	switch (cli_parse_args(&options, argv)) {
@@ -53,6 +54,31 @@ noreturn void main(const char *const *argv)
 	if (sys_bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
 		FPUTS_A(2, "bind() failed\n");
 		sys_exit(1);
+	}
+
+	pid_t children[255];
+
+	for (uint32_t i = 0; i < options.threads - 1; ++i) {
+		pid_t child = sys_clone(CLONE_FILES | CLONE_FS | CLONE_IO |
+					    CLONE_PARENT,
+					NULL, NULL, NULL, 0);
+		if (child < 0) {
+			FPUTS_A(2, "clone() failed\n");
+
+			/* Kill children that were created. */
+			for (uint32_t j = 0; j < i; j++) {
+				if (sys_kill(children[j], SIGKILL) != 0)
+					FPUTS_A(2, "kill() failed\n");
+			}
+
+			sys_exit(1);
+		} else if (child == 0) {
+			/* Only the parent must clone itself, to prevent having
+			   1 + (N - 1)! threads instead of just N threads. */
+			break;
+		}
+
+		children[i] = child;
 	}
 
 	if (!epoll_init(server_fd))
