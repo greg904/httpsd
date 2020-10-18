@@ -1,2 +1,30 @@
 A simple HTTP 1.1 server that redirects requests to the same URL but with the
 HTTPS scheme instead, and drops invalid requests.
+
+To build the server, use GNU make. It will produce an executable in the root
+directory.
+
+A systemd service unit file is provided in case you want to run it as a service
+with systemd.
+
+The code is split into multiple modules, each with one C header file and one C
+implementation file:
+- the cli module's job is to parse the command line arguments.
+- the conn module holds the state for currently connected clients: the socket
+  FD, the data that was sent, etc. When the HTTP request has been fully parsed,
+  it can be told to compose and send a response to the client.
+- the epoll module implements an event loop that accepts client sockets, reads
+  data from them to give it to the conn module and write the response when
+  possible.
+- the main module contains the my_main function which is called at the program
+  start.
+- the reqparser module is fed a request and parses what we want from it to make
+  a response.
+- the sys module is a reimplementation of the standard C library without
+  "costly" abstractions. It contains the actual entry point which calls the
+  my_main function in the main module.
+- the util module contains a few miscellaneous functions that did not belong to
+  any of the other modules.
+
+The standard C library is not used because it adds bloat to the final
+executable.
