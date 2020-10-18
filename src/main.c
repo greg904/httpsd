@@ -17,15 +17,18 @@
 
 #include <stdnoreturn.h>
 
+#include <flibc/linux.h>
+#include <flibc/util.h>
+
 #include "cli.h"
 #include "epoll.h"
-#include "sys.h"
-#include "util.h"
 
-static void create_more_threads(uint32_t count);
+static bool create_more_threads(uint32_t count);
 
-noreturn void my_main(const char *const *argv)
+int main(int argc, char **argv)
 {
+	F_UNUSED(argc);
+
 	struct cli_options options;
 	options.server_port = 80;
 	options.threads = 1;
@@ -36,16 +39,16 @@ noreturn void my_main(const char *const *argv)
 		break;
 	case CPR_STOP:
 		/* For example, if the help message was requested. */
-		sys_exit(0);
+		return 0;
 	case CPR_ERROR:
-		sys_exit(1);
+		return 1;
 	}
 
 	int server_fd =
 	    sys_socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if (server_fd < 0) {
-		FPUTS_A(2, "socket() failed\n");
-		sys_exit(1);
+		F_PRINT(2, "socket() failed\n");
+		return 1;
 	}
 
 	struct sockaddr_in addr;
@@ -54,49 +57,50 @@ noreturn void my_main(const char *const *argv)
 	addr.sin_port = htons(options.server_port);
 
 	if (sys_bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-		FPUTS_A(2, "bind() failed\n");
-		sys_exit(1);
+		F_PRINT(2, "bind() failed\n");
+		return 1;
 	}
 
-	create_more_threads(options.threads - 1);
+	if (!create_more_threads(options.threads - 1))
+		return 1;
 
 	if (!epoll_init(server_fd))
-		sys_exit(1);
+		return 1;
 
 	if (sys_listen(server_fd, options.socket_backlog) != 0) {
-		FPUTS_A(2, "listen() failed");
-		sys_exit(1);
+		F_PRINT(2, "listen() failed");
+		return 1;
 	}
 
 	for (;;) {
 		if (!epoll_wait_and_dispatch())
-			sys_exit(1);
+			return 1;
 	}
 }
 
-static void create_more_threads(uint32_t count)
+static bool create_more_threads(uint32_t count)
 {
 	if (count == 0)
-		return;
+		return true;
 
 	pid_t children[254];
 
-	ASSERT(count <= sizeof(children) / sizeof(*children));
+	F_ASSERT(count <= sizeof(children) / sizeof(*children));
 
 	for (uint32_t i = 0; i < count; ++i) {
 		pid_t child =
 		    sys_clone(CLONE_FILES | CLONE_FS | CLONE_IO | CLONE_PARENT,
 			      NULL, NULL, NULL, 0);
 		if (child < 0) {
-			FPUTS_A(2, "clone() failed\n");
+			F_PRINT(2, "clone() failed\n");
 
 			/* Kill children that were created. */
 			for (uint32_t j = 0; j < i; j++) {
 				if (sys_kill(children[j], SIGKILL) != 0)
-					FPUTS_A(2, "kill() failed\n");
+					F_PRINT(2, "kill() failed\n");
 			}
 
-			sys_exit(1);
+			return false;
 		} else if (child == 0) {
 			/* Only the parent must clone itself, to prevent having
 			   1 + (N - 1)! threads instead of just N threads. */
@@ -106,4 +110,6 @@ static void create_more_threads(uint32_t count)
 		if (i != count - 1)
 			children[i] = child;
 	}
+
+	return true;
 }

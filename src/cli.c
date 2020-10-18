@@ -18,9 +18,10 @@
 #include <limits.h>
 #include <stdbool.h>
 
+#include <flibc/linux.h>
+#include <flibc/util.h>
+
 #include "cli.h"
-#include "sys.h"
-#include "util.h"
 
 static bool cli_print_usage(int fd, const char *arg0);
 static void cli_print_arg_out_of_range(const char *arg, const char *arg0);
@@ -28,7 +29,7 @@ static bool cli_parse_num(uint32_t *result, uint32_t min, uint32_t max,
 			  const char *arg, const char *arg0);
 
 enum cli_parse_result cli_parse_args(struct cli_options *options,
-				     const char *const *argv)
+				     char **argv)
 {
 	const char *arg0 = argv[0];
 
@@ -77,8 +78,8 @@ enum cli_parse_result cli_parse_args(struct cli_options *options,
 
 static bool cli_print_usage(int fd, const char *arg0)
 {
-	return FPUTS_A(fd, "Usage: ") && FPUTS_0(fd, arg0) &&
-	       FPUTS_A(
+	return F_PRINT(fd, "Usage: ") && F_PRINT(fd, arg0) &&
+	       F_PRINT(
 		   fd,
 		   " [OPTION]...\nStarts an HTTP server that redirects "
 		   "requests to "
@@ -95,18 +96,18 @@ static bool cli_print_usage(int fd, const char *arg0)
 
 static void cli_print_arg_out_of_range(const char *arg, const char *arg0)
 {
-	if (!FPUTS_0(2, arg0) || !FPUTS_A(2, ": number out of range: ") ||
-	    !FPUTS_0(2, arg))
+	if (!F_PRINT(2, arg0) || !F_PRINT(2, ": number out of range: ") ||
+	    !F_PRINT(2, arg))
 		return;
-	FPUTS_A(2, "\n");
+	F_PRINT(2, "\n");
 }
 
 static bool cli_parse_num(uint32_t *result, uint32_t min, uint32_t max,
 			  const char *arg, const char *arg0)
 {
 	if (arg == NULL) {
-		if (!FPUTS_0(2, arg0) ||
-		    !FPUTS_A(2, ": missing number for argument\n"))
+		if (!F_PRINT(2, arg0) ||
+		    !F_PRINT(2, ": missing number for argument\n"))
 			return false;
 
 		return false;
@@ -116,9 +117,9 @@ static bool cli_parse_num(uint32_t *result, uint32_t min, uint32_t max,
 
 	for (; *arg != '\0'; ++arg) {
 		if (*arg < '0' || *arg > '9') {
-			if (!FPUTS_0(2, arg0) ||
-			    !FPUTS_A(2, ": invalid number: ") ||
-			    !FPUTS_0(2, arg) || !FPUTS_A(2, "\n"))
+			if (!F_PRINT(2, arg0) ||
+			    !F_PRINT(2, ": invalid number: ") ||
+			    !F_PRINT(2, arg) || !F_PRINT(2, "\n"))
 				return false;
 
 			return false;

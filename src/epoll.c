@@ -19,9 +19,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <flibc/util.h>
+
 #include "conn.h"
 #include "epoll.h"
-#include "util.h"
+#include "tmp.h"
 
 static int epoll_fd;
 static int epoll_server_socket_fd;
@@ -50,7 +52,7 @@ bool epoll_init(int server_socket_fd)
 
 	epoll_fd = sys_epoll_create1(EPOLL_CLOEXEC);
 	if (epoll_fd < 0) {
-		FPUTS_A(2, "epoll_create() failed\n");
+		F_PRINT(2, "epoll_create() failed\n");
 		return false;
 	}
 
@@ -61,7 +63,7 @@ bool epoll_wait_and_dispatch()
 {
 	struct timespec now_ts;
 	if (sys_clock_gettime(CLOCK_MONOTONIC, &now_ts) != 0) {
-		FPUTS_A(2, "clock_gettime() failed\n");
+		F_PRINT(2, "clock_gettime() failed\n");
 		return false;
 	}
 	epoll_now = now_ts.tv_sec * 1000 + now_ts.tv_nsec / 1000000;
@@ -79,7 +81,7 @@ bool epoll_wait_and_dispatch()
 		return true;
 	}
 	if (ret < 0) {
-		FPUTS_A(2, "epoll_wait() failed\n");
+		F_PRINT(2, "epoll_wait() failed\n");
 		return false;
 	}
 
@@ -101,7 +103,7 @@ static bool epoll_register_server()
 
 	if (sys_epoll_ctl(epoll_fd, EPOLL_CTL_ADD, epoll_server_socket_fd,
 			  &server_epoll_event) != 0) {
-		FPUTS_A(2, "epoll_ctl() failed\n");
+		F_PRINT(2, "epoll_ctl() failed\n");
 		return false;
 	}
 	epoll_server_was_unregistered = false;
@@ -113,7 +115,7 @@ static bool epoll_unregister_server()
 {
 	if (sys_epoll_ctl(epoll_fd, EPOLL_CTL_DEL, epoll_server_socket_fd,
 			  NULL) != 0) {
-		FPUTS_A(2, "epoll_ctl() failed");
+		F_PRINT(2, "epoll_ctl() failed");
 		return false;
 	}
 	epoll_server_was_unregistered = true;
@@ -150,7 +152,7 @@ static bool epoll_on_event(const struct epoll_event *event)
 		   and then we register for just EPOLLOUT as soon as we want to
 		   send the response, so we should never have both of them at
 		   the same time. */
-		ASSERT(in != out);
+		F_ASSERT(in != out);
 
 		if (in && !epoll_on_conn_in(conn_id))
 			return false;
@@ -179,18 +181,18 @@ static bool epoll_on_server_in()
 				return true;
 			}
 
-			FPUTS_A(2, "accept() failed\n");
+			F_PRINT(2, "accept() failed\n");
 			return false;
 		}
 
 		int conn_id = conn_new(client_fd);
-		ASSERT(conn_id != -1);
+		F_ASSERT(conn_id != -1);
 
 		/* Setup the timeout */
 		if (new_client_timeout == 0) {
 			struct timespec now;
 			if (sys_clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
-				FPUTS_A(2, "clock_gettime() failed\n");
+				F_PRINT(2, "clock_gettime() failed\n");
 				return false;
 			}
 			new_client_timeout =
@@ -207,7 +209,7 @@ static bool epoll_on_server_in()
 
 		if (sys_epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd,
 				  &client_epoll_event) != 0) {
-			FPUTS_A(2, "epoll_ctl() failed\n");
+			F_PRINT(2, "epoll_ctl() failed\n");
 			return false;
 		}
 	}
@@ -223,14 +225,14 @@ static bool epoll_on_conn_in(int conn_id)
 
 	for (;;) {
 		int bytes_read =
-		    sys_read(socket_fd, util_tmp_buf, sizeof(util_tmp_buf));
+		    sys_read(socket_fd, tmp_buf, sizeof(tmp_buf));
 		if (bytes_read < 0) {
 			if (bytes_read == -EAGAIN) {
 				/* We have already read everything. */
 				return true;
 			}
 
-			FPUTS_A(2, "read() failed\n");
+			F_PRINT(2, "read() failed\n");
 			return false;
 		}
 		if (bytes_read == 0) {
@@ -243,7 +245,7 @@ static bool epoll_on_conn_in(int conn_id)
 		}
 
 		enum conn_wants_more wants_more =
-		    conn_recv(conn_id, util_tmp_buf, bytes_read);
+		    conn_recv(conn_id, tmp_buf, bytes_read);
 		switch (wants_more) {
 		case CWM_YES:
 			continue;
@@ -262,7 +264,7 @@ static bool epoll_on_conn_in(int conn_id)
 				if (sys_epoll_ctl(epoll_fd, EPOLL_CTL_MOD,
 						  socket_fd,
 						  &new_client_epoll) != 0) {
-					FPUTS_A(2, "epoll_ctl() failed\n");
+					F_PRINT(2, "epoll_ctl() failed\n");
 					return false;
 				}
 				return true;
@@ -274,7 +276,7 @@ static bool epoll_on_conn_in(int conn_id)
 				return false;
 			}
 
-			ASSERT_UNREACHABLE();
+			F_ASSERT_UNREACHABLE();
 		case CWM_ERROR:
 			/* The socket FD will be removed from the epoll when it
 			   is closed. */
@@ -297,16 +299,16 @@ static bool epoll_on_conn_out(int conn_id)
 		return false;
 	}
 
-	ASSERT_UNREACHABLE();
+	F_ASSERT_UNREACHABLE();
 }
 
 static bool epoll_end_conn(int conn_id)
 {
-	ASSERT(sys_close(conn_get_socket_fd(conn_id)) == 0);
+	F_ASSERT(sys_close(conn_get_socket_fd(conn_id)) == 0);
 	conn_free(conn_id);
 
 	if (epoll_server_was_unregistered) {
-		ASSERT(!conn_is_full());
+		F_ASSERT(!conn_is_full());
 
 		/* Now, we have new space, so re-register the server socket. */
 		if (!epoll_register_server())

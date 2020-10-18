@@ -33,6 +33,6 @@ enum cli_parse_result {
 };
 
 enum cli_parse_result cli_parse_args(struct cli_options *options,
-				     const char *const *argv);
+				     char **argv);
 
 #endif

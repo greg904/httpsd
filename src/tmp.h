@@ -15,26 +15,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "util.h"
+#ifndef HTTP2SD_TMP_H
+#define HTTP2SD_TMP_H
 
-char util_tmp_buf[512];
+/**
+ * A temporary, shared buffer used to read requests and write responses.
+ */
+extern char tmp_buf[512];
 
-bool util_fputs(int fd, const char *str, size_t len)
-{
-	return sys_write(fd, str, len) == (ssize_t)len;
-}
-
-void util_reverse(char *start, char *end)
-{
-	ASSERT(end >= start);
-
-	while (start < end) {
-		/* Swap bytes. */
-		char tmp = *start;
-		*start = *end;
-		*end = tmp;
-
-		start++;
-		end--;
-	}
-}
+#endif

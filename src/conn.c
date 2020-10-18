@@ -18,9 +18,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include <flibc/mem.h>
+#include <flibc/util.h>
+
 #include "conn.h"
 #include "reqparser.h"
-#include "util.h"
+#include "tmp.h"
 
 /* If this becomes greater than 32, then the uint32_t type that is used
    throughout the code needs to be changed. */
@@ -157,7 +160,7 @@ enum conn_wants_more conn_recv(int id, const char *data, size_t len)
 		return CWM_NO;
 	}
 
-	ASSERT_UNREACHABLE();
+	F_ASSERT_UNREACHABLE();
 }
 
 enum conn_wants_more conn_send(int id)
@@ -169,10 +172,10 @@ enum conn_wants_more conn_send(int id)
 	   of the time so in reality, we're only going to do this once. */
 	size_t total_response_len =
 	    c->reqparser_state == REQPARSER_CUSTOM_ERR
-		? conn_write_too_long_response(util_tmp_buf,
-					       sizeof(util_tmp_buf))
-		: conn_write_redirect_response(id, util_tmp_buf,
-					       sizeof(util_tmp_buf));
+		? conn_write_too_long_response(tmp_buf,
+					       sizeof(tmp_buf))
+		: conn_write_redirect_response(id, tmp_buf,
+					       sizeof(tmp_buf));
 
 	for (;;) {
 		size_t remaining = total_response_len - c->res_bytes_sent;
@@ -180,12 +183,12 @@ enum conn_wants_more conn_send(int id)
 			return CWM_NO;
 
 		ssize_t written = sys_write(
-		    c->socket_fd, util_tmp_buf + c->res_bytes_sent, remaining);
+		    c->socket_fd, tmp_buf + c->res_bytes_sent, remaining);
 		if (written < 0) {
 			if (written == -EAGAIN)
 				return CWM_YES;
 
-			FPUTS_A(2, "write() failed\n");
+			F_PRINT(2, "write() failed\n");
 			return CWM_ERROR;
 		}
 		c->res_bytes_sent += written;
@@ -205,7 +208,7 @@ static size_t conn_write_redirect_response(int id, char *buf, size_t capacity)
 	const char header[] =
 	    "HTTP/1.1 301 Moved Permanently\r\nLocation: https://";
 	size_t header_len = sizeof(header) - 1;
-	ASSERT(cursor + header_len <= buf + capacity);
+	F_ASSERT(cursor + header_len <= buf + capacity);
 	memcpy(cursor, header, header_len);
 	cursor += header_len;
 
@@ -221,19 +224,19 @@ static size_t conn_write_redirect_response(int id, char *buf, size_t capacity)
 	size_t host_len = host_end - host_start;
 
 	/* URL host */
-	ASSERT(cursor + host_len <= buf + capacity);
+	F_ASSERT(cursor + host_len <= buf + capacity);
 	memcpy(cursor, c->req_fields + sep_index + 1, host_len);
 	cursor += host_len;
 
 	/* URL path */
-	ASSERT(cursor + sep_index <= buf + capacity);
+	F_ASSERT(cursor + sep_index <= buf + capacity);
 	memcpy(cursor, c->req_fields, sep_index);
 	cursor += sep_index;
 
 	const char footer[] =
 	    "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 	size_t footer_len = sizeof(footer) - 1;
-	ASSERT(cursor + footer_len <= buf + capacity);
+	F_ASSERT(cursor + footer_len <= buf + capacity);
 	memcpy(cursor, footer, footer_len);
 	cursor += footer_len;
 
@@ -247,7 +250,7 @@ static size_t conn_write_too_long_response(char *buf, size_t capacity)
 	    "45\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nThe "
 	    "combined URL host and path is too large!\n";
 	size_t body_len = sizeof(body) - 1;
-	ASSERT(body_len <= capacity);
+	F_ASSERT(body_len <= capacity);
 	memcpy(buf, body, body_len);
 	return body_len;
 }

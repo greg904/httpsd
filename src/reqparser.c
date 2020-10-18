@@ -17,8 +17,10 @@
 
 #include <stdbool.h>
 
+#include <flibc/mem.h>
+#include <flibc/util.h>
+
 #include "reqparser.h"
-#include "util.h"
 
 enum reqparser_type {
 	/**
@@ -75,7 +77,7 @@ static void reqparser_fix_req_fields(struct reqparser_args *args,
 enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 {
 	for (;;) {
-		ASSERT(args->data < args->data_end);
+		F_ASSERT(args->data < args->data_end);
 
 		enum reqparser_sub r;
 
@@ -104,7 +106,7 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 			r = reqparser_host(args);
 			break;
 		default:
-			ASSERT_UNREACHABLE();
+			F_ASSERT_UNREACHABLE();
 		}
 
 		switch (r) {
@@ -120,7 +122,7 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 		case RS_BUFFER_TOO_SMALL:
 			return PC_BUFFER_TOO_SMALL;
 		default:
-			ASSERT_UNREACHABLE();
+			F_ASSERT_UNREACHABLE();
 		}
 	}
 }
@@ -165,7 +167,7 @@ static enum reqparser_sub reqparser_path(struct reqparser_args *args)
 				return RS_ERROR;
 			}
 
-			ASSERT(fill_index < args->req_fields_len);
+			F_ASSERT(fill_index < args->req_fields_len);
 			args->req_fields[fill_index] = '\0';
 			args->state = RT_SKIP_LINE;
 
@@ -186,7 +188,7 @@ static enum reqparser_sub reqparser_path(struct reqparser_args *args)
 			if (fill_index == args->req_fields_len - 2)
 				return RS_BUFFER_TOO_SMALL;
 
-			ASSERT(fill_index < args->req_fields_len);
+			F_ASSERT(fill_index < args->req_fields_len);
 			args->req_fields[fill_index] = ch;
 			fill_index++;
 		}
@@ -238,7 +240,7 @@ static enum reqparser_sub reqparser_header_name(struct reqparser_args *args)
 	for (;;) {
 		/* Check if it's not the Host header, in which case we can just
 		   skip the entire line. */
-		ASSERT(args->state >= RT_HEADER_NAME_0 &&
+		F_ASSERT(args->state >= RT_HEADER_NAME_0 &&
 		       (ssize_t)(args->state - RT_HEADER_NAME_0) <
 			   (ssize_t)((sizeof(host_str) - 1) / sizeof(char)));
 		if (*args->data != host_str[args->state - RT_HEADER_NAME_0]) {
@@ -264,11 +266,11 @@ static enum reqparser_sub reqparser_header_name(struct reqparser_args *args)
 
 static enum reqparser_sub reqparser_host(struct reqparser_args *args)
 {
-	ASSERT(args->req_fields_len >= 1);
+	F_ASSERT(args->req_fields_len >= 1);
 	size_t fill_index = args->req_fields_len - 1;
 
 	while (args->req_fields[fill_index] != '\0') {
-		ASSERT(fill_index > 0);
+		F_ASSERT(fill_index > 0);
 		fill_index--;
 	}
 
@@ -302,7 +304,7 @@ static enum reqparser_sub reqparser_host(struct reqparser_args *args)
 static void reqparser_fix_req_fields(struct reqparser_args *args,
 				     size_t old_host_index)
 {
-	ASSERT(args->req_fields_len >= 1);
+	F_ASSERT(args->req_fields_len >= 1);
 
 	/* Now, reverse the host to put it back in the correct
 	   order and move it against the request path, after the
@@ -312,7 +314,7 @@ static void reqparser_fix_req_fields(struct reqparser_args *args,
 		     args->req_fields + (args->req_fields_len - 1));
 
 	size_t sep_index = strlen(args->req_fields);
-	ASSERT(sep_index <= args->req_fields_len - 1);
+	F_ASSERT(sep_index <= args->req_fields_len - 1);
 
 	size_t host_len = args->req_fields_len - old_host_index;
 	if (host_len != 0)
