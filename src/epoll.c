@@ -139,7 +139,12 @@ static bool epoll_on_event(const struct epoll_event *event)
 
 static bool epoll_on_server_in()
 {
-	/* The server socket is ready to accept one or more connection(s). */
+	/*
+	 * The server socket is ready to accept one or more connection(s).
+	 */
+
+	/* Cache timeout because clock_gettime can be expensive. */
+	uint64_t new_client_timeout = 0;
 
 	while (!conn_is_full()) {
 		int client_fd = sys_accept4(epoll_server_socket_fd, NULL, NULL,
@@ -158,14 +163,16 @@ static bool epoll_on_server_in()
 		ASSERT(conn_id != -1);
 
 		/* Setup the timeout */
-		struct timespec now;
-		if (sys_clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
-			FPUTS_A(2, "clock_gettime() failed\n");
-			return false;
+		if (new_client_timeout == 0) {
+			struct timespec now;
+			if (sys_clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+				FPUTS_A(2, "clock_gettime() failed\n");
+				return false;
+			}
+			new_client_timeout =
+			    now.tv_sec * 1000 + now.tv_nsec / 1000000 + 2000;
 		}
-		uint64_t timeout =
-		    now.tv_sec * 1000 + now.tv_nsec / 1000000 + 2000;
-		conn_set_timeout(conn_id, timeout);
+		conn_set_timeout(conn_id, new_client_timeout);
 
 		struct epoll_event client_epoll_event;
 		client_epoll_event.data.u64 = conn_id + 1;
