@@ -7,14 +7,14 @@ object_files := libs/parse_vdso.o \
 	src/sys.o \
 	src/util.o
 
-base_flags := -ffreestanding -nostdlib -fno-stack-protector -static
+base_flags := -std=gnu11 -ffreestanding -nostdlib -fno-stack-protector -static
 
 CC := clang
-CCFLAGS := -flto -fpic -O3 -Wall -Wextra -Werror
+CCFLAGS := -flto -fPIC -O3 -Wall -Wextra -Werror
 CCFLAGS := ${CCFLAGS} ${base_flags}
 
 LD := ${CC}
-LDFLAGS := -flto -fpic -O3 -fuse-ld=lld
+LDFLAGS := -flto -fPIC -O3 -fuse-ld=lld
 LDFLAGS := ${LDFLAGS} ${base_flags}
 
 .PHONY: all

@@ -15,6 +15,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <stdnoreturn.h>
+
 #include "sys.h"
 #include "util.h"
 
@@ -25,7 +27,8 @@ typedef int (*sys_clock_gettime_t)(clockid_t, struct timespec *);
 static sys_clock_gettime_t sys_clock_gettime_vdso;
 #endif
 
-extern void main(char **argv);
+/* The function is implemented in main.c. */
+noreturn void my_main(char **argv);
 
 #ifdef __x86_64__
 /* The actual entry point that calls main. */
@@ -33,9 +36,9 @@ asm(".global _start\n"
     "_start:\n"
     "xorl %ebp, %ebp\n" /* This is the outermost stack frame. */
     "movq %rsp, %rdi\n" /* Put argv in first argument. */
-    "call sys_main_amd64\n");
+    "jmpq sys_main_amd64\n");
 
-void sys_main_amd64(void *stack)
+noreturn void sys_main_amd64(void *stack)
 {
 	char *stack_c = (char *)stack;
 	char **argv = (char **)(stack_c + 8);
@@ -55,7 +58,7 @@ void sys_main_amd64(void *stack)
 	    (sys_clock_gettime_t)vdso_sym("LINUX_2.6", "__vdso_clock_gettime");
 #	endif
 
-	main(argv);
+	my_main(argv);
 }
 
 static uint64_t sys_1(uint64_t num, uint64_t a);

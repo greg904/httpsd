@@ -24,7 +24,7 @@
 
 static void create_more_threads(uint32_t count);
 
-noreturn void main(const char *const *argv)
+noreturn void my_main(const char *const *argv)
 {
 	struct cli_options options;
 	options.server_port = 80;

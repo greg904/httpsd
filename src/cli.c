@@ -95,11 +95,8 @@ static bool cli_print_usage(int fd, const char *arg0)
 
 static void cli_print_arg_out_of_range(const char *arg, const char *arg0)
 {
-	if (!FPUTS_0(2, arg0))
-		return;
-	if (!FPUTS_A(2, ": number out of range: "))
-		return;
-	if (!FPUTS_0(2, arg))
+	if (!FPUTS_0(2, arg0) || !FPUTS_A(2, ": number out of range: ") ||
+	    !FPUTS_0(2, arg))
 		return;
 	FPUTS_A(2, "\n");
 }
