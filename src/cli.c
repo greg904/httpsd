@@ -37,7 +37,7 @@ enum cli_parse_result cli_parse_args(struct cli_options *options,
 
 	for (; *argv != NULL; ++argv) {
 		if (strcmp(*argv, "-h") == 0 || strcmp(*argv, "--help") == 0) {
-			cli_print_usage(0, arg0);
+			cli_print_usage(1, arg0);
 			return CPR_STOP;
 		} else if (strcmp(*argv, "-p") == 0 ||
 			   strcmp(*argv, "--port") == 0) {
