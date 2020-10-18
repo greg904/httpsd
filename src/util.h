@@ -26,18 +26,27 @@
 
 #define UNUSED(x) (void)x;
 
-#define STR_VALUE(x) #x
-#define STR_VALUE_MACRO(x) STR_VALUE(x)
+#define STR_VALUE_(x) #x
+#define STR_VALUE(x) STR_VALUE_(x)
+#define STR_LINE STR_VALUE(__LINE__)
 
 #define FPUTS_0(fd, str) util_fputs(fd, str, strlen(str))
 #define FPUTS_A(fd, str) util_fputs(fd, str, sizeof(str) - 1)
 
 #define ASSERT(check)                                                          \
 	if (!(check)) {                                                        \
-		FPUTS_A(2, "Assertion failed at " __FILE__                     \
-			   ":" STR_VALUE(__LINE__) ".");                       \
+		FPUTS_A(2, "Assertion failed at ") && FPUTS_A(2, __FILE__) &&  \
+		    FPUTS_A(2, ":" STR_LINE ".\n");                            \
 		sys_exit(1);                                                   \
 	}
+
+#define ASSERT_UNREACHABLE()                                                   \
+	do {                                                                   \
+		FPUTS_A(2, "Code that was not supposed to be reachable was "   \
+			   "executed at ") &&                                  \
+		    FPUTS_A(2, __FILE__) && FPUTS_A(2, ":" STR_LINE ".\n");    \
+		sys_exit(1);                                                   \
+	} while (false)
 
 /**
  * A temporary buffer used to read requests or write responses.

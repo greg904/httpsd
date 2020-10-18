@@ -104,8 +104,7 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 			r = reqparser_host(args);
 			break;
 		default:
-			ASSERT(false);
-			return PC_BAD_DATA;
+			ASSERT_UNREACHABLE();
 		}
 
 		switch (r) {
@@ -121,8 +120,7 @@ enum reqparser_completion reqparser_feed(struct reqparser_args *args)
 		case RS_BUFFER_TOO_SMALL:
 			return PC_BUFFER_TOO_SMALL;
 		default:
-			ASSERT(false);
-			return PC_BAD_DATA;
+			ASSERT_UNREACHABLE();
 		}
 	}
 }

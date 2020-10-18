@@ -84,8 +84,7 @@ int sys_close(int fd) { return (int)sys_1(3, fd); }
 noreturn void sys_exit(int code)
 {
 	sys_1(60, code);
-	for (;;) {
-	}
+	__builtin_unreachable();
 }
 
 pid_t sys_clone(unsigned long flags, void *stack, int *parent_tid,
@@ -95,10 +94,7 @@ pid_t sys_clone(unsigned long flags, void *stack, int *parent_tid,
 			   (uint64_t)child_tid, tls);
 }
 
-int sys_kill(pid_t pid, int signal)
-{
-	return (int)sys_2(62, pid, signal);
-}
+int sys_kill(pid_t pid, int signal) { return (int)sys_2(62, pid, signal); }
 
 int sys_socket(int family, int type, int protocol)
 {

@@ -157,9 +157,7 @@ enum conn_wants_more conn_recv(int id, const char *data, size_t len)
 		return CWM_NO;
 	}
 
-	/* We should never get here. */
-	ASSERT(false);
-	return CWM_ERROR;
+	ASSERT_UNREACHABLE();
 }
 
 enum conn_wants_more conn_send(int id)

@@ -22,6 +22,8 @@
 #include "sys.h"
 #include "util.h"
 
+static void create_more_threads(uint32_t count);
+
 noreturn void main(const char *const *argv)
 {
 	struct cli_options options;
@@ -56,12 +58,32 @@ noreturn void main(const char *const *argv)
 		sys_exit(1);
 	}
 
-	pid_t children[255];
+	create_more_threads(options.threads - 1);
 
-	for (uint32_t i = 0; i < options.threads - 1; ++i) {
-		pid_t child = sys_clone(CLONE_FILES | CLONE_FS | CLONE_IO |
-					    CLONE_PARENT,
-					NULL, NULL, NULL, 0);
+	if (!epoll_init(server_fd))
+		sys_exit(1);
+
+	if (sys_listen(server_fd, options.socket_backlog) != 0) {
+		FPUTS_A(2, "listen() failed");
+		sys_exit(1);
+	}
+
+	for (;;) {
+		if (!epoll_wait_and_dispatch())
+			sys_exit(1);
+	}
+}
+
+static void create_more_threads(uint32_t count)
+{
+	pid_t children[254];
+
+	ASSERT(count - 1 < sizeof(children) / sizeof(*children));
+
+	for (uint32_t i = 0; i < count; ++i) {
+		pid_t child =
+		    sys_clone(CLONE_FILES | CLONE_FS | CLONE_IO | CLONE_PARENT,
+			      NULL, NULL, NULL, 0);
 		if (child < 0) {
 			FPUTS_A(2, "clone() failed\n");
 
@@ -78,19 +100,7 @@ noreturn void main(const char *const *argv)
 			break;
 		}
 
-		children[i] = child;
-	}
-
-	if (!epoll_init(server_fd))
-		sys_exit(1);
-
-	if (sys_listen(server_fd, options.socket_backlog) != 0) {
-		FPUTS_A(2, "listen() failed");
-		sys_exit(1);
-	}
-
-	for (;;) {
-		if (!epoll_wait_and_dispatch())
-			sys_exit(1);
+		if (i != count - 1)
+			children[i] = child;
 	}
 }

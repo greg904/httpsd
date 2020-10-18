@@ -111,7 +111,8 @@ static bool epoll_register_server()
 
 static bool epoll_unregister_server()
 {
-	if (sys_epoll_ctl(epoll_fd, EPOLL_CTL_DEL, epoll_server_socket_fd, NULL) != 0) {
+	if (sys_epoll_ctl(epoll_fd, EPOLL_CTL_DEL, epoll_server_socket_fd,
+			  NULL) != 0) {
 		FPUTS_A(2, "epoll_ctl() failed");
 		return false;
 	}
@@ -202,8 +203,7 @@ static bool epoll_on_server_in()
 		/* For now, we only care about reading the request. Later, when
 		   we want to know when we can write to the socket to respond to
 		   the request, we will call epoll_ctl to modify the events. */
-		client_epoll_event.events =
-		    EPOLLIN | EPOLLET | EPOLLWAKEUP;
+		client_epoll_event.events = EPOLLIN | EPOLLET | EPOLLWAKEUP;
 
 		if (sys_epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd,
 				  &client_epoll_event) != 0) {
@@ -274,9 +274,7 @@ static bool epoll_on_conn_in(int conn_id)
 				return false;
 			}
 
-			/* We should never get here. */
-			ASSERT(false);
-			return false;
+			ASSERT_UNREACHABLE();
 		case CWM_ERROR:
 			/* The socket FD will be removed from the epoll when it
 			   is closed. */
@@ -299,9 +297,7 @@ static bool epoll_on_conn_out(int conn_id)
 		return false;
 	}
 
-	/* We should never get here. */
-	ASSERT(false);
-	return false;
+	ASSERT_UNREACHABLE();
 }
 
 static bool epoll_end_conn(int conn_id)
