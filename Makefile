@@ -1,36 +1,46 @@
-object_files := src/cli.o \
-	src/conn.o \
-	src/epoll.o \
-	src/main.o \
-	src/reqparser.o \
-	src/tmp.o
-deps_files := $(object_files:%.o=%.d)
+# Make sure that the shell is the same everywhere.
+SHELL = /bin/sh
 
-CCFLAGS ?= -fno-stack-protector -flto -fPIC -O2 -Wall -Wextra -Werror
-CCFLAGS += -Iflibc/include -std=gnu11 -ffreestanding -nostdlib
+src_c := $(wildcard src/*.c)
+objs := $(src_c:%.c=%.o)
 
-LDFLAGS ?= ${CCFLAGS} -static
-LDFLAGS += -Lflibc -lflibc
+CFLAGS = -std=gnu11 -ffreestanding -nostdlib -flto -fPIC -O2 -Wall -Wextra -Werror
+LDLIBS = -lflibc
+LDFLAGS = -static
+
+INSTALL = install
+INSTALL_PROGRAM = $(INSTALL)
+INSTALL_DATA = $(INSTALL) -m 644
 
 .PHONY: all
 all: http2sd
 
 .PHONY: clean
 clean:
-	rm -f ${object_files} ${deps_files} http2sd
+	rm -f $(objs) gstatus
 
 .PHONY: format
 format:
-	clang-format -i src/*.c src/*.h
+	clang-format -i $(src_c) include/flibc/*.h
+
+###
+# Compilation
+###
 
 %.o: %.c
-	${CC} $< -c -MD -o $@ ${CCFLAGS}
-
-# The compiler will generate dependencies for each implementation file.
--include ${deps_files}
+	$(CC) $< -c -MD -o $@ -Iflibc/include $(CPPFLAGS) $(CFLAGS)
 
 flibc/libflibc.a:
-	${MAKE} -C flibc
+	$(MAKE) -C flibc
 
-http2sd: ${object_files} flibc/libflibc.a
-	${CC} ${object_files} -o $@ ${LDFLAGS}
+http2sd: $(objs) flibc/libflibc.a
+	$(CC) $(objs) -o $@ -Lflibc $(CFLAGS) $(LDLIBS) $(LDFLAGS)
+
+###
+# Installation
+###
+
+.PHONY: install
+install: http2sd http2sd.service
+	$(INSTALL_PROGRAM) http2sd $(DESTDIR)/usr/bin/http2sd
+	$(INSTALL_DATA) http2sd.service $(DESTDIR)/usr/lib/systemd/system/http2sd.service

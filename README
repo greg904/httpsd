@@ -4,8 +4,9 @@ HTTPS scheme instead, and drops invalid requests.
 To build the server, use GNU make. It will produce an executable in the root
 directory.
 
-A systemd service unit file is provided in case you want to run it as a service
-with systemd.
+You can use the install target to install the executable and a systemd service
+that starts the executables. Please, read the Makefile to see available
+options.
 
 The code is split into multiple modules, each with one C header file and one C
 implementation file:
